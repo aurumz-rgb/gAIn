@@ -1,6 +1,0 @@
-pytest
-pytest-mock
-pytest-cov
-streamlit
-pytesseract
-pillow

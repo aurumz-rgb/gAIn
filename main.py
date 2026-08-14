@@ -69,7 +69,7 @@ def generate_beginner_guide(name, action, cp, entry, stop, target_price, lt_tren
     else:
         lt_advice = f"**Long term:**\nThe larger trend is bullish. You can hold, with a potential longer-term target around **₹{lt_sell}**."
 
-    return f"""### {name} — WHAT SHOULD I DO RIGHT NOW? - **₹{cp}**
+    return f"""### {name} — WHAT SHOULD I DO RIGHT NOW? | Current Price :  **₹{cp}**
 
 **Current decision: {action_emoji}**
 
@@ -99,7 +99,7 @@ def generate_why_not_trade(action, reasons, rr_ratio):
 
 def generate_markdown(ticker, profile, short_term, long_term, stock_news, global_news, final_score, action, rr_ratio):
     name = profile.get("name", ticker)
-    sector = profile.get("sector", "N/A")
+   
     company_desc = profile.get("description", "N/A")
     cp = short_term.get("current_price", "N/A")
     
@@ -177,25 +177,23 @@ def generate_markdown(ticker, profile, short_term, long_term, stock_news, global
 
     return f"""**⏱️ Current Date & Time:** <span id="live-clock">Loading...</span>
 
-**{name} ({ticker})**
-*Sector:* {sector} | *Current Price:* ₹{cp} | *Action:* {action} |
-*Company:* {company_desc}
+**{ticker}** | {company_desc}
 [CHART:PRICE]
 
 ---
 
 {beginner_guide}
 
----
+=================================================
 
-### ⏱️ Where could the price be?
+### ⏱ Where could the price be?
 *Disclaimer: These are model-implied volatility ranges based on ATR, not exact predictions.*
 
 {proj_str}
 
----
+=================================================
 
-### 🎯 Trade Setup & Risk Management
+###  Trade Setup & Risk Management
 *Levels derived from 14-day ATR volatility and Bollinger Band support/resistance.*
 * **Action:** {action}
 * **Entry (Buy):** ₹{entry}
@@ -204,13 +202,10 @@ def generate_markdown(ticker, profile, short_term, long_term, stock_news, global
 * **Risk/Reward Ratio:** {rr_ratio} : 1
 * *Note: Do not trade if R:R is below 1.5.*
 
----
 
-{why_not_trade}
+=================================================
 
----
-
-### 📊 Signal & Market Regime
+### 📶 Signal & Market Regime
 * **Short-Term Trend:** {st_trend}
 * **Long-Term Regime:** {lt_trend}
 * **Current Regime:** {regime}
@@ -220,8 +215,9 @@ def generate_markdown(ticker, profile, short_term, long_term, stock_news, global
 {reasons_str}
 
 ---
+---
 
-### 🧮 Quantitative Evidence (Math Explained Simply)
+### 🧩 Quantitative Evidence (Math Explained Simply)
 * **VWAP (Volume Weighted Average Price):** ₹{vwap.get('value', 'N/A')} - (Formula: Sum of (Typical Price * Volume) / Sum of Volume). This is the average price weighted by volume today. If current price > VWAP, buyers are in control.
 * **RSI (Relative Strength Index):** {rsi.get('value', 'N/A')} - (Formula: 100 - [100 / (1 + Avg Gain / Avg Loss)]). This compares how much the stock goes up vs down. If RSI > 70, it's too expensive. If < 30, it's too cheap.
 [CHART:RSI]
@@ -232,14 +228,14 @@ def generate_markdown(ticker, profile, short_term, long_term, stock_news, global
 * **Bollinger Bands:** Upper ₹{bb.get('upper_band', 'N/A')}, Lower ₹{bb.get('lower_band', 'N/A')} - (Formula: 20-day SMA +/- 2 Standard Deviations). These are lines that show where prices usually go. When price hits the top, it's high; when it hits the bottom, it's low.
 * **ATR (Average True Range):** {atr.get('value', 'N/A')} - (Formula: Average of True Range over 14 days). This measures how much the stock price moves up and down in a day. Higher ATR means more movement.
 
-**🕒 Last 24 Hours Performance:**
+**Last 24 Hours Performance:**
 * **6H:** Changed by {p6.get('change_pct', 'N/A')}% (High ₹{p6.get('high', 'N/A')}, Low ₹{p6.get('low', 'N/A')})
 * **12H:** Changed by {p12.get('change_pct', 'N/A')}% (High ₹{p12.get('high', 'N/A')}, Low ₹{p12.get('low', 'N/A')})
 * **24H:** Changed by {p24.get('change_pct', 'N/A')}% (High ₹{p24.get('high', 'N/A')}, Low ₹{p24.get('low', 'N/A')})
 
----
+=================================================
 
-### 🧮 Long Term Math (1 Year Data)
+###  Long Term Math (1 Year Data)
 * **52-Week High:** ₹{high_52w} | **52-Week Low:** ₹{low_52w}
 * **50-DMA & 200-DMA (Daily Moving Averages):** ₹{sma_50_str} & ₹{sma_200_str} - (Formula: Average price over 50 and 200 days). These are like 50-day and 200-day averages. If the 50-day is above the 200-day, the trend is up. If below, the trend is down. Here {dma_status}.
 * **Fibonacci Levels:** 0% at ₹{fib.get('0%', 'N/A')}, 23.6% at ₹{fib.get('23.6%', 'N/A')}, 38.2% at ₹{fib.get('38.2%', 'N/A')}, 50% at ₹{fib.get('50%', 'N/A')}, 61.8% at ₹{fib.get('61.8%', 'N/A')}, 100% at ₹{fib.get('100%', 'N/A')}.
@@ -250,24 +246,29 @@ def generate_markdown(ticker, profile, short_term, long_term, stock_news, global
 * **Sell at:** ₹{lt_sell} (Based on nearest 1-year Fibonacci resistance level for max profit).
 
 ---
+---
 
 ### 📰 News & Events
-**Global & Macro News (Events affecting all stocks):**
-{global_news_str}
 
 **Stock Specific News:**
 {stock_news_str}
+
+
+=================================================
+
+**Global & Macro News (Events affecting all stocks):**
+{global_news_str}
 
 *⚠️ Disclaimer: Based on textbook technical math analysis, which historically wins only about 50-55% of the time.*
 """
 
 async def process_data(ticker, stock_name, log_func=None):
-    if log_func: await log_func("[SYSTEM] Initializing gAIn quant backend...")
+    if log_func: await log_func("[SYSTEM] Initializing gAIn backend...")
     if log_func: await log_func(f"[INPUT] Ticker requested: {ticker}")
     
     if log_func: await log_func("[DATA] Step 1/6: Fetching Company Profile (NSE/Yahoo)...")
     profile = await asyncio.to_thread(ta_server.get_company_profile, ticker)
-    if log_func: await log_func(f"  └─ Profile: {profile.get('name', 'N/A')} | Sector: {profile.get('sector', 'N/A')}")
+    if log_func: await log_func(f"  └─ Profile: {profile.get('name', 'N/A')}")
     
     if log_func: await log_func("[DATA] Step 2/6: Fetching Live Price & 24h OHLCV data (5m interval)...")
     short_term = await asyncio.to_thread(ta_server.get_bid_ask_targets, ticker)

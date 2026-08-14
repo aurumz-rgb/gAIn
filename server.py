@@ -1,4 +1,4 @@
-# server.py
+
 import pandas as pd
 import numpy as np
 import logging
@@ -213,7 +213,7 @@ def get_bid_ask_targets(ticker: str) -> dict:
             entry_price = current_price * 0.98
             target_price = current_price * 1.02
             
-        # FIX: Stop Loss strictly BELOW entry price
+  
         stop_loss = entry_price - (atr_val * 1.5)
         
         now_ist = datetime.now(IST)

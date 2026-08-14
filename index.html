@@ -51,7 +51,7 @@
             <div class="title">gAIn. — bash — 80x24</div>
         </div>
         <div class="terminal-body" id="terminal-body">
-            <div>Welcome to gAIn. Terminal. Enter ticker (e.g., RELIANCE, NIFTY).<br><span class="blink">_</span></div>
+            <div>Welcome to gAIn. Terminal. Enter ticker (e.g., RELIANCE, NIFTY). Use the exact ticker, like BAJFINANCE, not BAJAJFINANCE.<br><span class="blink">_</span></div>
         </div>
         <div class="input-line">
             <span class="prompt">vihaan@gAIn:~$</span>
@@ -71,13 +71,14 @@
         let isFrozen = false;
         let currentTicker = "";
         let terminal_text = "";
-        let isFirstLoad = true;
         
         const input = document.getElementById('ticker-input');
         const body = document.getElementById('terminal-body');
         const freezeBtn = document.getElementById('freeze-btn');
         
         const BACKEND_URL = "http://localhost:8000"; 
+        //  const BACKEND_URL = "render url"; 
+        // Do this if you deply the backend to your own API backend and // the localhost:3000
 
         setInterval(() => {
             const clock = document.getElementById('live-clock');
@@ -92,7 +93,6 @@
                 isFrozen = false;
                 freezeBtn.innerText = 'Freeze';
                 if (currentTicker) {
-                    isFirstLoad = false;
                     fetchData(currentTicker, false);
                     pollingInterval = setInterval(() => {
                         if (!isFrozen) fetchData(currentTicker, false);
@@ -283,14 +283,14 @@
                 currentTicker = ticker;
                 if (pollingInterval) clearInterval(pollingInterval);
                 
-                isFirstLoad = true;
-                fetchData(ticker, isFirstLoad);
+         
+                fetchData(ticker, true);
                 
 
+              
                 pollingInterval = setInterval(() => {
                     if (!isFrozen) {
-                        isFirstLoad = false; 
-                        fetchData(ticker, isFirstLoad);
+                        fetchData(ticker, false); 
                     }
                 }, 5000); 
             }

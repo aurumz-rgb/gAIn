@@ -1,4 +1,3 @@
-# main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -46,7 +45,6 @@ def analyze_news_sentiment(headlines):
     return max(-2, min(2, sentiment_score)), matched_words
 
 def determine_action(final_score, rr_ratio):
-    """Determines whether to BUY, SELL, or WAIT based on score and risk/reward."""
     if final_score >= 2 and rr_ratio >= 1.5:
         return "BUY"
     elif final_score <= -2 and rr_ratio >= 1.5:
@@ -55,7 +53,6 @@ def determine_action(final_score, rr_ratio):
         return "WAIT"
 
 def generate_beginner_guide(name, action, cp, entry, stop, target_price, lt_trend, lt_buy, lt_sell, final_score, rr_ratio):
-    """Deterministic Python engine to generate plain-English guide. Never fails."""
     if action == "BUY":
         action_emoji = "🟢 CONSIDER BUYING"
         st_advice = f"**Short term:**\nDon't chase the stock at the current price of ₹{cp}. Wait for it to hit the buy zone.\n\n* **Buy:** ₹{entry}\n* **Target:** ₹{target_price}\n* **Stop:** ₹{stop}"
@@ -72,11 +69,10 @@ def generate_beginner_guide(name, action, cp, entry, stop, target_price, lt_tren
     else:
         lt_advice = f"**Long term:**\nThe larger trend is bullish. You can hold, with a potential longer-term target around **₹{lt_sell}**."
 
-    return f"""### 🟢 {name} — WHAT SHOULD I DO RIGHT NOW?
-
-**₹{cp}**
+    return f"""### {name} — WHAT SHOULD I DO RIGHT NOW? - **₹{cp}**
 
 **Current decision: {action_emoji}**
+
 
 {st_advice}
 
@@ -84,7 +80,6 @@ def generate_beginner_guide(name, action, cp, entry, stop, target_price, lt_tren
 """
 
 def generate_why_not_trade(action, reasons, rr_ratio):
-    """Generates the 'Why NOT Trade' section if action is WAIT."""
     if action != "WAIT": 
         return ""
     
@@ -137,7 +132,6 @@ def generate_markdown(ticker, profile, short_term, long_term, stock_news, global
     vwap = bc.get('VWAP', {})
     projections = short_term.get('time_projections', [])
     
-    # Format projections as sentences
     proj_str = ""
     seen_times = set()
     for p in projections:
@@ -184,7 +178,7 @@ def generate_markdown(ticker, profile, short_term, long_term, stock_news, global
     return f"""**⏱️ Current Date & Time:** <span id="live-clock">Loading...</span>
 
 **{name} ({ticker})**
-*Sector:* {sector} | *Current Price:* ₹{cp} | *Action:* {action}
+*Sector:* {sector} | *Current Price:* ₹{cp} | *Action:* {action} |
 *Company:* {company_desc}
 [CHART:PRICE]
 
@@ -264,32 +258,57 @@ def generate_markdown(ticker, profile, short_term, long_term, stock_news, global
 **Stock Specific News:**
 {stock_news_str}
 
-*Disclaimer: Based on technical math. Not financial advice.*
+*⚠️ Disclaimer: Based on textbook technical math analysis, which historically wins only about 50-55% of the time.*
 """
 
 async def process_data(ticker, stock_name, log_func=None):
-    if log_func: await log_func("[SYSTEM] Initializing backend...")
-    if log_func: await log_func("[MCP] Fetching Company Profile...")
+    if log_func: await log_func("[SYSTEM] Initializing gAIn quant backend...")
+    if log_func: await log_func(f"[INPUT] Ticker requested: {ticker}")
+    
+    if log_func: await log_func("[DATA] Step 1/6: Fetching Company Profile (NSE/Yahoo)...")
     profile = await asyncio.to_thread(ta_server.get_company_profile, ticker)
+    if log_func: await log_func(f"  └─ Profile: {profile.get('name', 'N/A')} | Sector: {profile.get('sector', 'N/A')}")
     
-    if log_func: await log_func("[MCP] Fetching Live Price & Short Term Math (RSI, MACD, VWAP)...")
+    if log_func: await log_func("[DATA] Step 2/6: Fetching Live Price & 24h OHLCV data (5m interval)...")
     short_term = await asyncio.to_thread(ta_server.get_bid_ask_targets, ticker)
+    if log_func:
+        await log_func("[MATH] Step 2.1: Calculating Short Term Math...")
+        bc = short_term.get('background_calculations', {})
+        await log_func(f"  ├─ RSI (14): {bc.get('RSI_14', {}).get('value', 'N/A')} ({bc.get('RSI_14', {}).get('status', 'N/A')})")
+        await log_func(f"  ├─ Stoch RSI: {bc.get('Stoch_RSI', {}).get('value', 'N/A')} ({bc.get('Stoch_RSI', {}).get('status', 'N/A')})")
+        await log_func(f"  ├─ MACD: {bc.get('MACD', {}).get('macd_line', 'N/A')} vs Signal {bc.get('MACD', {}).get('signal_line', 'N/A')} ({bc.get('MACD', {}).get('momentum', 'N/A')})")
+        await log_func(f"  ├─ VWAP: ₹{bc.get('VWAP', {}).get('value', 'N/A')} ({bc.get('VWAP', {}).get('status', 'N/A')})")
+        await log_func(f"  ├─ Bollinger Bands: Upper ₹{bc.get('Bollinger_Bands', {}).get('upper_band', 'N/A')}, Lower ₹{bc.get('Bollinger_Bands', {}).get('lower_band', 'N/A')}")
+        await log_func(f"  └─ ATR (14): {bc.get('ATR', {}).get('value', 'N/A')} ({bc.get('ATR', {}).get('interpretation', 'N/A')})")
+        await log_func("[CHART] Step 2.2: Generating 24h Price, RSI, Stoch RSI, MACD Plotly graphs...")
     
-    if log_func: await log_func("[MCP] Fetching Long Term Data (1-Year Fibonacci, DMA)...")
+    if log_func: await log_func("[DATA] Step 3/6: Fetching Long Term Data (1Y Daily candles)...")
     long_term = await asyncio.to_thread(ta_server.get_long_term_analysis, ticker)
+    if log_func:
+        await log_func("[MATH] Step 3.1: Calculating Long Term Math...")
+        ma = long_term.get('moving_averages', {})
+        await log_func(f"  ├─ 50-DMA: ₹{ma.get('sma_50', 'N/A')} | 200-DMA: ₹{ma.get('sma_200', 'N/A')} ({ma.get('cross_status', 'N/A')})")
+        await log_func(f"  ├─ 52-Week High: ₹{long_term.get('52_week_high', 'N/A')} | Low: ₹{long_term.get('52_week_low', 'N/A')}")
+        await log_func(f"  └─ Fibonacci Levels mapped.")
+        await log_func("[CHART] Step 3.2: Generating 1-Year Price & DMA Plotly graph...")
     
-    if log_func: await log_func("[MCP] Fetching Stock Specific News (Google + Yahoo)...")
+    if log_func: await log_func("[NEWS] Step 4/6: Fetching Stock Specific News (Google + Yahoo)...")
     stock_news = await asyncio.to_thread(ta_server.get_indian_stock_news, ticker, stock_name)
-    
-    if log_func: await log_func("[MCP] Fetching Global Macro News (ET + Google)...")
+    if log_func: await log_func(f"  └─ Found {len(stock_news.get('latest_news_headlines', []))} articles.")
+        
+    if log_func: await log_func("[NEWS] Step 5/6: Fetching Global Macro News (ET + Google)...")
     global_news = await asyncio.to_thread(ta_server.get_global_market_news)
+    if log_func: await log_func(f"  └─ Found {len(global_news.get('global_headlines', []))} articles.")
     
-    if log_func: await log_func("[QUANT] Calculating Signal Score, Regime & Risk/Reward...")
+    if log_func: await log_func("[QUANT] Step 6/6: Running Quant Engine & Risk Management...")
     tech_score = short_term.get("quant_score", 0)
     reasons = short_term.get("quant_reasons", [])
     stock_news_list = stock_news.get('latest_news_headlines', [])
+    
+    if log_func: await log_func("  ├─ Analyzing News Sentiment...")
     news_sentiment, matched_words = analyze_news_sentiment(stock_news_list)
     final_score = tech_score + news_sentiment
+    if log_func: await log_func(f"  │  └─ Sentiment Score: {news_sentiment} (Matched: {', '.join(matched_words) if matched_words else 'None'})")
     
     targets = short_term.get('actionable_targets', {})
     entry = targets.get('entry', 0)
@@ -301,10 +320,15 @@ async def process_data(ticker, stock_name, log_func=None):
     rr_ratio = round(reward_per_share / risk_per_share, 2) if risk_per_share > 0 else 0
     
     action = determine_action(final_score, rr_ratio)
+    if log_func: await log_func(f"  ├─ Technical Score: {tech_score}")
+    if log_func: await log_func(f"  ├─ Final Signal Score: {final_score}")
+    if log_func: await log_func(f"  ├─ Risk/Reward Ratio: {rr_ratio} : 1 (Entry: ₹{entry}, Stop: ₹{stop}, Target: ₹{target_price})")
+    if log_func: await log_func(f"  └─ Final Action Determined: {action}")
     
-    if log_func: await log_func(f"[QUANT] Action: {action} (Score: {final_score} | R:R: {rr_ratio})")
-    if log_func: await log_func("[SYSTEM] Generating Markdown & Chart Data...")
+    if log_func: await log_func("[SYSTEM] Generating plain-English guide & Markdown...")
     reply = generate_markdown(ticker, profile, short_term, long_term, stock_news, global_news, final_score, action, rr_ratio)
+    
+    if log_func: await log_func("[SYSTEM] Processing complete. Dispatching UI payload...")
     
     return {
         "reply": reply, 
@@ -324,18 +348,33 @@ async def get_live_data(query: Query):
     
     if query.show_logs:
         async def event_stream():
+            queue = asyncio.Queue()
+
             async def log_msg(msg):
-                return f"LOG: {msg}\n"
-            try:
-                payload = await process_data(ticker, stock_name, log_msg)
-                yield f"FINAL: {json.dumps(payload)}\n"
-                return
-            except Exception as e:
-                yield f"LOG: [ERROR] Backend Exception: {str(e)}\n"
-                yield f"LOG: {traceback.format_exc()}\n"
-                payload = {"reply": f"Backend Error: {str(e)}", "short_chart_data": [], "long_chart_data": [], "targets": {}}
-                yield f"FINAL: {json.dumps(payload)}\n"
-                return
+                await queue.put(f"LOG: {msg}\n")
+
+            async def run_task():
+                try:
+                    payload = await process_data(ticker, stock_name, log_msg)
+                    await queue.put(f"FINAL: {json.dumps(payload)}\n")
+                except Exception as e:
+                    await queue.put(f"LOG: [ERROR] Backend Exception: {str(e)}\n")
+                    await queue.put(f"LOG: {traceback.format_exc()}\n")
+                    payload = {"reply": f"Backend Error: {str(e)}", "short_chart_data": [], "long_chart_data": [], "targets": {}}
+                    await queue.put(f"FINAL: {json.dumps(payload)}\n")
+                finally:
+                    await queue.put(None)
+
+            task = asyncio.create_task(run_task())
+            
+            while True:
+                item = await queue.get()
+                if item is None:
+                    break
+                yield item
+                
+            await task
+
         return StreamingResponse(event_stream(), media_type="text/event-stream")
     
     else:

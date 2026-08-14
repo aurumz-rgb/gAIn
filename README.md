@@ -22,7 +22,7 @@ Install requirements:
 
 
 
-
+---
 
 ### 📌 Project History & Evolution
 

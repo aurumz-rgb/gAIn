@@ -20,7 +20,6 @@
             background-color: rgba(20, 20, 20, 0.95);
             border-radius: 10px;
             border: 1px solid #333;
-
         }
         h1, h2, h3, h4 {
             color: rgb(159, 222, 161);
@@ -71,55 +70,72 @@
         <h1>gAIn. Terminal Documentation</h1>
         <p>Welcome to the official documentation for the gAIn. Stock Market Terminal. This platform provides real-time, mathematically calculated trading targets and news for the Indian Stock Market (NSE/BSE).</p>
 
-        <h2> Architecture Overview</h2>
-        <p>The application is split into a decoupled Frontend and Backend architecture, allowing for seamless live updates without relying on heavy AI processing for every tick.</p>
+        <h2>The Name "gAIn." & The Pivot to Pure Math</h2>
+        <p>The name <strong>gAIn.</strong> originally stood for the use of AI in predicting stock market. The initial concept was to build a system that utilized Large Language Models — particularly large-context models like the <strong>GLM series</strong> — to read vast amounts of financial news, parse historical balance sheets, and output trading predictions.</p>
+        <p>However, during development, a fundamental decision was made: <strong>financial predictions ought to be done via strict calculations, not AI hallucinations.</strong> Relying on an AI to determine exact entry and stop-loss prices introduced too much unpredictability. Therefore, the AI component was completely stripped out.</p>
+        <p><strong>There is absolutely NO AI involved in the current system.</strong> Every number, target, and trend you see is calculated deterministically using pure, textbook technical analysis math executed via Python and Pandas.</p>
+        <p><strong>However, I am too lazy to think of a bettername, so the old one stays.</strong></p>
+
+        <h2>Architecture Overview</h2>
+        <p>The application is split into a decoupled Frontend and Backend architecture, allowing for seamless live updates without relying on heavy processing for every tick.</p>
         <ul>
-            <li><strong>Frontend (Vercel / GitHub Pages):</strong> A pure HTML/JS/CSS file styled as a macOS terminal. It polls the backend every 1 second for live data, renders Markdown text, and draws Plotly charts directly in the browser.</li>
-            <li><strong>Backend (Fly.io / Localhost):</strong> Built with Python FastAPI. It acts as the orchestrator, receiving requests, spawning the MCP server, fetching live data, performing the math, and returning a formatted JSON payload.</li>
-            <li><strong>MCP Server (Model Context Protocol):</strong> A local Python script (<code>server.py</code>) spawned by the backend. It contains the "Tools" (functions) that fetch Yahoo Finance data, NSE profiles, and Google News RSS feeds.</li>
+            <li><strong>Frontend (Vercel / GitHub Pages):</strong> A pure HTML/JS/CSS file styled as a macOS terminal. It polls the backend every 2 seconds for live data, renders Markdown text, and draws Plotly charts directly in the browser.</li>
+            <li><strong>Backend (Fly.io / Render / Localhost):</strong> Built with Python FastAPI. It acts as the orchestrator, receiving requests, fetching live data, performing the math, and returning a formatted JSON payload.</li>
+            <li><strong>Data Server (<code>server.py</code>):</strong> A local Python script spawned by the backend. It contains the "Tools" (functions) that fetch Yahoo Finance data, NSE profiles, and live RSS news feeds.</li>
         </ul>
 
-        <h2> The Mathematics (Explained Simply)</h2>
-        <p>All math is calculated natively in Python using Pandas to ensure 100% accuracy. No AI hallucination is involved in the numbers.</p>
+        <h2>The Mathematics (Explained Simply)</h2>
+        <p>All math is calculated natively in Python using Pandas to ensure 100% accuracy. Below is exactly how each value is calculated.</p>
 
         <h3>Short Term Math (24-Hour Data, 5-Minute Intervals)</h3>
         <ul>
-            <li><strong>VWAP (Volume Weighted Average Price):</strong> The ultimate institutional average price. <br><code>Formula: Cumulative(Price * Volume) / Cumulative(Volume)</code><br>If price is above VWAP, buyers are in control.</li>
-            <li><strong>RSI (Relative Strength Index):</strong> Measures the speed and change of price movements. <br><code>Formula: 100 - [100 / (1 + Average Gain / Average Loss)]</code><br>If RSI > 70, the stock is overbought (expensive). If RSI < 30, it is oversold (cheap).</li>
-            <li><strong>Stochastic RSI:</strong> Applies the RSI formula to RSI itself to find extreme edges. <br><code>Formula: (Current RSI - Lowest RSI) / (Highest RSI - Lowest RSI)</code></li>
-            <li><strong>MACD (Moving Average Convergence Divergence):</strong> Shows momentum by comparing 12-day and 26-day moving averages. <br><code>Formula: 12-day EMA - 26-day EMA</code></li>
-            <li><strong>Bollinger Bands:</strong> Volatility bands around the price. <br><code>Formula: 20-day SMA +/- (2 * Standard Deviation)</code><br>Price hitting the upper band means it's high; hitting the lower band means it's low.</li>
-            <li><strong>ATR (Average True Range):</strong> Measures how much the stock moves up and down daily. Used to calculate Stop Loss. <br><code>Formula: Average of True Range over 14 days</code></li>
+            <li><strong>VWAP (Volume Weighted Average Price):</strong> The ultimate institutional average price.<br><code>Formula: Cumulative(Typical Price * Volume) / Cumulative(Volume)</code><br>Where <code>Typical Price = (High + Low + Close) / 3</code>. If price > VWAP, buyers are in control.</li>
+            <li><strong>RSI (Relative Strength Index):</strong> Measures the speed and change of price movements over 14 periods.<br><code>Formula: 100 - [100 / (1 + (Average Gain / Average Loss))]</code><br>If RSI > 70, overbought. If RSI < 30, oversold.</li>
+            <li><strong>Stochastic RSI:</strong> Applies the RSI formula to RSI itself to find extreme edges over 14 periods.<br><code>Formula: (Current RSI - Lowest RSI) / (Highest RSI - Lowest RSI)</code></li>
+            <li><strong>MACD (Moving Average Convergence Divergence):</strong> Shows momentum.<br><code>Formula: 12-period EMA - 26-period EMA</code><br>Signal Line is <code>9-period EMA of MACD</code>.</li>
+            <li><strong>Bollinger Bands:</strong> Volatility bands around the price over 20 periods.<br><code>Upper Band: 20-SMA + (2 * Std Dev)</code><br><code>Lower Band: 20-SMA - (2 * Std Dev)</code></li>
+            <li><strong>ATR (Average True Range):</strong> Measures daily price movement range over 14 periods.<br><code>True Range = max(High-Low, abs(High-PrevClose), abs(Low-PrevClose))</code><br><code>ATR = Average of True Range</code></li>
         </ul>
 
         <h3>Long Term Math (1-Year Daily Data)</h3>
         <ul>
-            <li><strong>50-DMA & 200-DMA:</strong> Simple Moving Averages over 50 and 200 days. If the 50-DMA is above the 200-DMA, it's a long-term uptrend (Golden Cross). If below, it's a downtrend (Death Cross).</li>
-            <li><strong>Fibonacci Retracement:</strong> Horizontal lines showing support and resistance levels based on the golden ratio. <br><code>Levels: 0%, 23.6%, 38.2%, 50%, 61.8%, 100%</code></li>
+            <li><strong>50-DMA & 200-DMA:</strong> Simple Moving Averages over 50 and 200 days. If 50-DMA > 200-DMA, it's an uptrend (Golden Cross). If below, downtrend (Death Cross).</li>
+            <li><strong>Fibonacci Retracement:</strong> Horizontal support/resistance lines based on the golden ratio, derived from the 52-Week High and Low.<br><code>Levels: 0%, 23.6%, 38.2%, 50%, 61.8%, 100%</code></li>
         </ul>
 
-        <h3>Predictions (Next 1-3 Hours)</h3>
+        <h3>Trade Setup & Risk Management (How Targets are Calculated)</h3>
         <ul>
-            <li><strong>1-Hour Projection:</strong> <code>Current Price +/- (0.5 * ATR)</code></li>
-            <li><strong>2-Hour Projection:</strong> <code>Current Price +/- (1.0 * ATR) + (MACD Momentum * 2)</code></li>
-            <li><strong>3-Hour Projection:</strong> Tests the 24h Bollinger Band support/resistance levels.</li>
+            <li><strong>Entry (Buy):</strong> <code>max(20-day Lower Bollinger Band, 24-hour Low)</code></li>
+            <li><strong>Target (Sell):</strong> <code>min(20-day Upper Bollinger Band, 24-hour High)</code></li>
+            <li><strong>Stop Loss:</strong> <code>Entry Price - (ATR * 1.5)</code></li>
+            <li><strong>Risk/Reward Ratio:</strong> <code>(Target - Entry) / (Entry - Stop Loss)</code>. The system strictly says "WAIT" if this drops below 1.5.</li>
         </ul>
 
-        <h2> Data Sources</h2>
+        <h3>Predictions (Next 1-3 Hours & Market Close)</h3>
+        <p>Predictions use a dynamic bias multiplier derived from the Quant Score: <code>Bias = Quant Score / 8.0</code>. This tightens or expands the ATR range based on momentum.</p>
+        <ul>
+            <li><strong>1-Hour Projection:</strong> <code>Current Price +/- (0.5 * ATR * max(0.2, 1 +/- Bias))</code></li>
+            <li><strong>2-Hour Projection:</strong> <code>Current Price +/- (1.0 * ATR * max(0.2, 1 +/- Bias))</code></li>
+            <li><strong>3-Hour Projection:</strong> <code>Current Price +/- (1.5 * ATR * max(0.2, 1 +/- Bias))</code></li>
+            <li><strong>Market Close:</strong> Uses the exact hours remaining to 15:15 IST multiplied by ATR and the bias factor.</li>
+        </ul>
+
+        <h2>Data Sources</h2>
         <ul>
             <li><strong>Yahoo Finance API:</strong> Used for OHLC (Open, High, Low, Close) historical data, real-time prices, and company profiles.</li>
+            <li><strong>Stooq:</strong> Fallback real-time price verification.</li>
             <li><strong>NSE India API:</strong> Primary source for company sectors and industries.</li>
-            <li><strong>Google News RSS:</strong> Scraped live for both Stock-Specific and Global/Macro news (Wars, Economy, Oil Prices).</li>
+            <li><strong>News Aggregators (RSS):</strong> Scraped live for both Stock-Specific and Global/Macro news. Sources include Google News, Yahoo Finance, Economic Times, Moneycontrol, Livemint, and Business Standard.</li>
         </ul>
 
         <h2>⚙️ How It Works (Step-by-Step)</h2>
         <ol>
-            <li>User types a ticker (e.g., <code>RELIANCE.NS</code>) in the terminal.</li>
-            <li>The Frontend sends a POST request to the FastAPI backend and starts a 1-second polling loop.</li>
-            <li>The Backend starts an MCP Client session and calls the 5 tools: <code>get_company_profile</code>, <code>get_bid_ask_targets</code>, <code>get_long_term_analysis</code>, <code>get_indian_stock_news</code>, and <code>get_global_market_news</code>.</li>
-            <li>The MCP Server fetches raw data from Yahoo/NSE/Google, runs the Pandas mathematical calculations, and returns JSON.</li>
+            <li>User types a ticker (e.g., <code>RELIANCE</code>) in the terminal.</li>
+            <li>The Frontend sends a POST request to the FastAPI backend and starts a 5-second polling loop.</li>
+            <li>The Backend runs the data engine, calling 5 core functions: <code>get_company_profile</code>, <code>get_bid_ask_targets</code>, <code>get_long_term_analysis</code>, <code>get_indian_stock_news</code>, and <code>get_global_market_news</code>.</li>
+            <li>The Server fetches raw data from Yahoo/NSE/RSS feeds, runs the Pandas mathematical calculations, and structures it into JSON.</li>
             <li>The Backend formats this JSON into a Markdown string with <code>[CHART:...]</code> tags and sends it back.</li>
-            <li>The Frontend parses the Markdown, renders the text, and draws the Plotly charts exactly where the tags are placed.</li>
+            <li>The Frontend parses the Markdown, renders the text with yellow/green syntax highlights, and draws the Plotly charts exactly where the tags are placed without resetting zoom levels.</li>
         </ol>
 
         <a href="index.html" class="back-link">← Back to Terminal</a>

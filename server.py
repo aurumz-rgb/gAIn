@@ -1,4 +1,3 @@
-
 import pandas as pd
 import numpy as np
 import logging
@@ -13,9 +12,53 @@ logger = logging.getLogger(__name__)
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
-news_cache = {"stock": {}, "global": {"data": None, "time": 0}}
+
 price_cache = {}  
 realtime_cache = {}  
+
+def fetch_rss_feed(url, source_name, search_term=None):
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    items = []
+    try:
+        response = requests.get(url, headers=headers, timeout=5)
+        root = ET.fromstring(response.content)
+        for item in root.findall('.//item'):
+            title = item.find('title').text if item.find('title') is not None else "No Title"
+            link = item.find('link').text if item.find('link') is not None else ""
+            pub_date_str = item.find('pubDate').text if item.find('pubDate') is not None else ""
+            
+ 
+            if not pub_date_str:
+                dc_date = item.find('{http://purl.org/dc/elements/1.1/}date')
+                if dc_date is not None: pub_date_str = dc_date.text
+
+            if pub_date_str:
+                try:
+        
+                    dt = datetime.strptime(pub_date_str, "%a, %d %b %Y %H:%M:%S %Z").astimezone(IST)
+                except:
+                    try:
+                   
+                        dt = datetime.fromisoformat(pub_date_str.replace('Z', '+00:00')).astimezone(IST)
+                    except:
+                        continue
+            else:
+                continue
+
+          
+            if search_term:
+                if search_term.lower() not in title.lower():
+                    continue
+
+            items.append({
+                "title": f"{title} ({source_name})",
+                "link": link,
+                "date": dt.strftime("%d %b %Y, %H:%M"),
+                "timestamp": dt.timestamp()
+            })
+    except Exception as e:
+        pass
+    return items
 
 def fetch_yahoo_direct(ticker, interval="5m", range="5d"):
     cache_key = f"{ticker}_{interval}_{range}"
@@ -213,7 +256,6 @@ def get_bid_ask_targets(ticker: str) -> dict:
             entry_price = current_price * 0.98
             target_price = current_price * 1.02
             
-  
         stop_loss = entry_price - (atr_val * 1.5)
         
         now_ist = datetime.now(IST)
@@ -234,7 +276,7 @@ def get_bid_ask_targets(ticker: str) -> dict:
         if hours_to_close > 0:
             close_max = current_price + (atr_val * hours_to_close * max(0.2, 1 + bias_multiplier))
             close_min = current_price - (atr_val * hours_to_close * max(0.2, 1 - bias_multiplier))
-            projections.append({"time": "Market Close", "max": round(close_max, 2), "min": round(close_min, 2)})
+            projections.append({"time": "MARKET CLOSE", "max": round(close_max, 2), "min": round(close_min, 2)})
             
         unique_projections = []
         seen_times = set()
@@ -296,9 +338,6 @@ def get_long_term_analysis(ticker: str) -> dict:
         return {"error": str(e)}
 
 def get_indian_stock_news(ticker: str, stock_name: str) -> dict:
-    if ticker in news_cache["stock"] and time.time() - news_cache["stock"][ticker]["time"] < 60:
-        return news_cache["stock"][ticker]["data"]
-        
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     news_items = []
 
@@ -306,13 +345,7 @@ def get_indian_stock_news(ticker: str, stock_name: str) -> dict:
         clean_name = stock_name.replace("Limited", "").replace("Ltd", "").strip()
         query = quote(f"{clean_name} stock news India")
         url = f"https://news.google.com/rss/search?q={query}&hl=en-IN&gl=IN&ceid=IN:en"
-        response = requests.get(url, headers=headers, timeout=10)
-        root = ET.fromstring(response.content)
-        for item in root.findall('.//item'):
-            title = item.find('title').text if item.find('title') is not None else "No Title"
-            pub_date_str = item.find('pubDate').text if item.find('pubDate') is not None else ""
-            dt = datetime.strptime(pub_date_str, "%a, %d %b %Y %H:%M:%S %Z").astimezone(IST)
-            news_items.append({"title": f"{title} (Google News)", "date": dt.strftime("%d %b %Y, %H:%M"), "timestamp": dt.timestamp()})
+        news_items.extend(fetch_rss_feed(url, "Google News"))
     except: pass
 
     try:
@@ -320,50 +353,49 @@ def get_indian_stock_news(ticker: str, stock_name: str) -> dict:
         res = requests.get(url, headers=headers, timeout=10).json()
         for article in res.get("news", []):
             title = article.get("title", "No Title")
+            link = article.get("link", "")
             pub_date_str = article.get("providerPublishTime", "")
             if pub_date_str:
                 dt = datetime.fromtimestamp(pub_date_str, tz=IST)
-                news_items.append({"title": f"{title} (Yahoo Finance)", "date": dt.strftime("%d %b %Y, %H:%M"), "timestamp": dt.timestamp()})
+                news_items.append({"title": f"{title} (Yahoo Finance)", "link": link, "date": dt.strftime("%d %b %Y, %H:%M"), "timestamp": dt.timestamp()})
     except: pass
 
+    
+    clean_name = stock_name.replace("Limited", "").replace("Ltd", "").strip()
+    rss_feeds_stock = [
+        ("https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms", "Economic Times"),
+        ("https://www.moneycontrol.com/rss/markets.xml", "Moneycontrol"),
+        ("https://www.livemint.com/rss/markets", "Livemint"),
+        ("https://www.business-standard.com/rss/markets-106.rss", "Business Standard")
+    ]
+    for feed_url, source in rss_feeds_stock:
+        news_items.extend(fetch_rss_feed(feed_url, source, search_term=clean_name))
+
     news_items.sort(key=lambda x: x['timestamp'], reverse=True)
-    headlines = [f"[{item['date']}] {item['title']}" for item in news_items[:25]]
+    headlines = [{"text": f"[{item['date']}] {item['title']}", "url": item['link']} for item in news_items[:25]]
     result = {"latest_news_headlines": headlines} if headlines else {"news": "No recent news found."}
-    news_cache["stock"][ticker] = {"data": result, "time": time.time()}
     return result
 
 def get_global_market_news() -> dict:
-    if news_cache["global"]["data"] and time.time() - news_cache["global"]["time"] < 60:
-        return news_cache["global"]["data"]
-        
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     news_items = []
 
     try:
         query = quote("war OR economy OR inflation OR oil prices OR RBI OR \"Federal Reserve\" stock market")
         url = f"https://news.google.com/rss/search?q={query}&hl=en-IN&gl=IN&ceid=IN:en"
-        response = requests.get(url, headers=headers, timeout=10)
-        root = ET.fromstring(response.content)
-        for item in root.findall('.//item'):
-            title = item.find('title').text if item.find('title') is not None else "No Title"
-            pub_date_str = item.find('pubDate').text if item.find('pubDate') is not None else ""
-            dt = datetime.strptime(pub_date_str, "%a, %d %b %Y %H:%M:%S %Z").astimezone(IST)
-            news_items.append({"title": f"{title} (Google News)", "date": dt.strftime("%d %b %Y, %H:%M"), "timestamp": dt.timestamp()})
+        news_items.extend(fetch_rss_feed(url, "Google News"))
     except: pass
 
-    try:
-        url = "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms"
-        response = requests.get(url, headers=headers, timeout=10)
-        root = ET.fromstring(response.content)
-        for item in root.findall('.//item'):
-            title = item.find('title').text if item.find('title') is not None else "No Title"
-            pub_date_str = item.find('pubDate').text if item.find('pubDate') is not None else ""
-            dt = datetime.strptime(pub_date_str, "%a, %d %b %Y %H:%M:%S %Z").astimezone(IST)
-            news_items.append({"title": f"{title} (Economic Times)", "date": dt.strftime("%d %b %Y, %H:%M"), "timestamp": dt.timestamp()})
-    except: pass
+    rss_feeds_global = [
+        ("https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms", "Economic Times"),
+        ("https://www.moneycontrol.com/rss/markets.xml", "Moneycontrol"),
+        ("https://www.livemint.com/rss/markets", "Livemint"),
+        ("https://www.business-standard.com/rss/markets-106.rss", "Business Standard")
+    ]
+    for feed_url, source in rss_feeds_global:
+        news_items.extend(fetch_rss_feed(feed_url, source))
 
     news_items.sort(key=lambda x: x['timestamp'], reverse=True)
-    headlines = [f"[{item['date']}] {item['title']}" for item in news_items[:25]]
+    headlines = [{"text": f"[{item['date']}] {item['title']}", "url": item['link']} for item in news_items[:25]]
     result = {"global_headlines": headlines} if headlines else {"news": "No recent news found."}
-    news_cache["global"] = {"data": result, "time": time.time()}
     return result

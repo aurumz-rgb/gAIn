@@ -27,13 +27,31 @@ class Query(BaseModel):
     user_input: str
     show_logs: bool = False
 
+YELLOW_STYLE = "background-color: #2d2d2d; padding: 2px 6px; border-radius: 4px; color: #ffbd2e; font-size: 19px;"
+GREEN_COLOR = "rgb(159, 222, 161)"
+
+def y(text):
+    """Yellow highlight from documentation.html code element style"""
+    return f'<span style="{YELLOW_STYLE}">{text}</span>'
+
+def g(text):
+    """Green highlight from documentation.html h1-h4 style"""
+    return f'<span style="color: {GREEN_COLOR};">{text}</span>'
+
+def view_link(url):
+    """Yellow highlighted [View] link for news"""
+    if url:
+        return f' <a href="{url}" target="_blank" style="{YELLOW_STYLE} text-decoration: none;">[View]</a>'
+    return ""
+
 def analyze_news_sentiment(headlines):
     bull_words = ["rally", "profit", "upgrade", "deal", "surge", "record", "approve", "win", "beat", "growth", "boost", "rise"]
     bear_words = ["crash", "ban", "fraud", "loss", "downgrade", "fall", "probe", "warning", "tax", "sell", "drag", "drop", "slide"]
     sentiment_score = 0
     matched_words = []
     for h in headlines:
-        h_lower = h.lower()
+        h_text = h['text'] if isinstance(h, dict) else h
+        h_lower = h_text.lower()
         for w in bull_words:
             if w in h_lower and w not in matched_words:
                 sentiment_score += 1
@@ -55,21 +73,21 @@ def determine_action(final_score, rr_ratio):
 def generate_beginner_guide(name, action, cp, entry, stop, target_price, lt_trend, lt_buy, lt_sell, final_score, rr_ratio):
     if action == "BUY":
         action_emoji = "🟢 CONSIDER BUYING"
-        st_advice = f"**Short term:**\nDon't chase the stock at the current price of ₹{cp}. Wait for it to hit the buy zone.\n\n* **Buy:** ₹{entry}\n* **Target:** ₹{target_price}\n* **Stop:** ₹{stop}"
+        st_advice = f"**Short term:**\nDon't chase the stock at the current price of ₹{cp}. Wait for it to hit the buy zone.\n\n* **Buy:** {y(f'₹{entry}')}\n* **Target:** {y(f'₹{target_price}')}\n* **Stop:** {y(f'₹{stop}')}"
     elif action == "SELL / AVOID":
         action_emoji = "🔴 AVOID / SELL ON RISE"
-        st_advice = f"**Short term:**\nThe math says **SELL**. It is risky to buy at the current price of ₹{cp}. If you already own it, consider selling.\n\n* **Buy (High Risk):** ₹{entry}\n* **Target:** ₹{target_price}\n* **Stop:** ₹{stop}"
+        st_advice = f"**Short term:**\nThe math says **{y('SELL')}**. It is risky to buy at the current price of ₹{cp}. If you already own it, consider selling.\n\n* **Buy (High Risk):** {y(f'₹{entry}')}\n* **Target:** {y(f'₹{target_price}')}\n* **Stop:** {y(f'₹{stop}')}"
     else:
         action_emoji = "🟡 WAIT"
         reason = "The stock is moving sideways and several signals disagree." if -1 <= final_score <= 1 else "The Risk/Reward ratio is not attractive enough."
-        st_advice = f"**Short term:**\nDon't buy at ₹{cp}. Better entry: **₹{entry}**\n\nIf it reaches that area:\n* **Buy:** ₹{entry}\n* **Target:** ₹{target_price}\n* **Stop:** ₹{stop}\n\n**Why?**\n{reason} There's not enough evidence for a strong trade."
+        st_advice = f"**Short term:**\nDon't buy at {y(f'₹{cp}')}. Better entry: **{y(f'₹{entry}')}**\n\nIf it reaches that area:\n* **Buy:** {y(f'₹{entry}')}\n* **Target:** {y(f'₹{target_price}')}\n* **Stop:** {y(f'₹{stop}')}\n\n**Why?**\n{reason} There's not enough evidence for a strong trade."
 
     if lt_trend == "BEARISH":
-        lt_advice = f"**Long term:**\nCurrent trend is weak. **Wait for a stronger entry around ₹{lt_buy}** rather than buying heavily now."
+        lt_advice = f"**Long term:**\nCurrent trend is {y('weak')}. **Wait for a stronger entry around {y(f'₹{lt_buy}')}** rather than buying heavily now."
     else:
         lt_advice = f"**Long term:**\nThe larger trend is bullish. You can hold, with a potential longer-term target around **₹{lt_sell}**."
 
-    return f"""### {name} — WHAT SHOULD I DO RIGHT NOW? | Current Price :  **₹{cp}**
+    return f"""### {name} — {g('WHAT SHOULD I DO RIGHT NOW?')} | Current Price :  **{y(f'₹{cp}')}**
 
 **Current decision: {action_emoji}**
 
@@ -141,7 +159,7 @@ def generate_markdown(ticker, profile, short_term, long_term, stock_news, global
         p_min = p.get('min', 0)
         p_max = p.get('max', 0)
         central = round((p_min + p_max) / 2, 2) if p_min and p_max else "N/A"
-        proj_str += f"* At **{t}**, the expected range is **₹{p_min} - ₹{p_max}** (Central estimate: ₹{central}).\n"
+        proj_str += f"* At **{y(t)}**, the expected range is **{y(f'₹{p_min} - ₹{p_max}')}** (Central estimate: {y(f'₹{central}')}).\n"
             
     targets = short_term.get('actionable_targets', {})
     entry = targets.get('entry', 0)
@@ -168,16 +186,16 @@ def generate_markdown(ticker, profile, short_term, long_term, stock_news, global
     beginner_guide = generate_beginner_guide(name, action, cp, entry, stop, target_price, lt_trend, lt_buy, lt_sell, final_score, rr_ratio)
     why_not_trade = generate_why_not_trade(action, reasons, rr_ratio)
     
-    stock_news_str = "\n".join([f"- {n}" for n in stock_news_list])
+    stock_news_str = "\n".join([f"- {n['text']}{view_link(n.get('url', ''))}" if isinstance(n, dict) else f"- {n}" for n in stock_news_list])
     global_news_list = global_news.get('global_headlines', [])
-    global_news_str = "\n".join([f"- {n}" for n in global_news_list])
+    global_news_str = "\n".join([f"- {n['text']}{view_link(n.get('url', ''))}" if isinstance(n, dict) else f"- {n}" for n in global_news_list])
 
     reasons_str = "\n".join([f"  - {r}" for r in reasons])
     sentiment_str = f"+{news_sentiment}" if news_sentiment > 0 else str(news_sentiment)
 
     return f"""**⏱️ Current Date & Time:** <span id="live-clock">Loading...</span>
 
-**{ticker}** | {company_desc}
+**{y(ticker)}** | {company_desc}
 [CHART:PRICE]
 
 ---
@@ -186,29 +204,29 @@ def generate_markdown(ticker, profile, short_term, long_term, stock_news, global
 
 =================================================
 
-### ⏱ Where could the price be?
+### {g('⏱ Where could the price be?')}
 *Disclaimer: These are model-implied volatility ranges based on ATR, not exact predictions.*
 
 {proj_str}
 
 =================================================
 
-###  Trade Setup & Risk Management
+###  {g('Trade Setup & Risk Management')}
 *Levels derived from 14-day ATR volatility and Bollinger Band support/resistance.*
 * **Action:** {action}
-* **Entry (Buy):** ₹{entry}
-* **Stop Loss:** ₹{stop} (Risk: ₹{risk_per_share}/share)
-* **Target (Sell):** ₹{target_price} (Reward: ₹{reward_per_share}/share)
-* **Risk/Reward Ratio:** {rr_ratio} : 1
+* **Entry (Buy):** {y(f'₹{entry}')}
+* **Stop Loss:** {y(f'₹{stop}')} (Risk: {y(f'₹{risk_per_share}/share')})
+* **Target (Sell):** {y(f'₹{target_price}')} (Reward: {y(f'₹{reward_per_share}/share')})
+* **Risk/Reward Ratio:** {y(f'{rr_ratio} : 1')}
 * *Note: Do not trade if R:R is below 1.5.*
 
 
 =================================================
 
-### 📶 Signal & Market Regime
-* **Short-Term Trend:** {st_trend}
-* **Long-Term Regime:** {lt_trend}
-* **Current Regime:** {regime}
+### 📶 {g('Signal & Market Regime')}
+* **Short-Term Trend:** {y(st_trend)}
+* **Long-Term Regime:** {y(lt_trend)}
+* **Current Regime:** {y(regime)}
 * **Signal Score:** {final_score} (Tech: {tech_score} | News: {sentiment_str})
 
 **Quantitative Reasons:**
@@ -217,7 +235,7 @@ def generate_markdown(ticker, profile, short_term, long_term, stock_news, global
 ---
 ---
 
-### 🧩 Quantitative Evidence (Math Explained Simply)
+### 🧩 {g('Quantitative Evidence (Math Explained Simply)')}
 * **VWAP (Volume Weighted Average Price):** ₹{vwap.get('value', 'N/A')} - (Formula: Sum of (Typical Price * Volume) / Sum of Volume). This is the average price weighted by volume today. If current price > VWAP, buyers are in control.
 * **RSI (Relative Strength Index):** {rsi.get('value', 'N/A')} - (Formula: 100 - [100 / (1 + Avg Gain / Avg Loss)]). This compares how much the stock goes up vs down. If RSI > 70, it's too expensive. If < 30, it's too cheap.
 [CHART:RSI]
@@ -229,13 +247,13 @@ def generate_markdown(ticker, profile, short_term, long_term, stock_news, global
 * **ATR (Average True Range):** {atr.get('value', 'N/A')} - (Formula: Average of True Range over 14 days). This measures how much the stock price moves up and down in a day. Higher ATR means more movement.
 
 **Last 24 Hours Performance:**
-* **6H:** Changed by {p6.get('change_pct', 'N/A')}% (High ₹{p6.get('high', 'N/A')}, Low ₹{p6.get('low', 'N/A')})
-* **12H:** Changed by {p12.get('change_pct', 'N/A')}% (High ₹{p12.get('high', 'N/A')}, Low ₹{p12.get('low', 'N/A')})
-* **24H:** Changed by {p24.get('change_pct', 'N/A')}% (High ₹{p24.get('high', 'N/A')}, Low ₹{p24.get('low', 'N/A')})
+* **{y('6H')}:** Changed by {y(f"{p6.get('change_pct', 'N/A')}%")} (High {y(f"₹{p6.get('high', 'N/A')}")}, Low {y(f"₹{p6.get('low', 'N/A')}")})
+* **{y('12H')}:** Changed by {y(f"{p12.get('change_pct', 'N/A')}%")} (High {y(f"₹{p12.get('high', 'N/A')}")}, Low {y(f"₹{p12.get('low', 'N/A')}")})
+* **{y('24H')}:** Changed by {y(f"{p24.get('change_pct', 'N/A')}%")} (High {y(f"₹{p24.get('high', 'N/A')}")}, Low {y(f"₹{p24.get('low', 'N/A')}")})
 
 =================================================
 
-###  Long Term Math (1 Year Data)
+###  {g('Long Term Math (1 Year Data)')}
 * **52-Week High:** ₹{high_52w} | **52-Week Low:** ₹{low_52w}
 * **50-DMA & 200-DMA (Daily Moving Averages):** ₹{sma_50_str} & ₹{sma_200_str} - (Formula: Average price over 50 and 200 days). These are like 50-day and 200-day averages. If the 50-day is above the 200-day, the trend is up. If below, the trend is down. Here {dma_status}.
 * **Fibonacci Levels:** 0% at ₹{fib.get('0%', 'N/A')}, 23.6% at ₹{fib.get('23.6%', 'N/A')}, 38.2% at ₹{fib.get('38.2%', 'N/A')}, 50% at ₹{fib.get('50%', 'N/A')}, 61.8% at ₹{fib.get('61.8%', 'N/A')}, 100% at ₹{fib.get('100%', 'N/A')}.
@@ -250,13 +268,13 @@ def generate_markdown(ticker, profile, short_term, long_term, stock_news, global
 
 ### 📰 News & Events
 
-**Stock Specific News:**
+**{g('Stock Specific News:')}**
 {stock_news_str}
 
 
 =================================================
 
-**Global & Macro News (Events affecting all stocks):**
+**{g('Global & Macro News (Events affecting all stocks):')}**
 {global_news_str}
 
 *⚠️ Disclaimer: Based on textbook technical math analysis, which historically wins only about 50-55% of the time.*
@@ -293,11 +311,11 @@ async def process_data(ticker, stock_name, log_func=None):
         await log_func(f"  └─ Fibonacci Levels mapped.")
         await log_func("[CHART] Step 3.2: Generating 1-Year Price & DMA Plotly graph...")
     
-    if log_func: await log_func("[NEWS] Step 4/6: Fetching Stock Specific News (Google + Yahoo)...")
+    if log_func: await log_func("[NEWS] Step 4/6: Fetching Stock Specific News (Google + Yahoo + More)...")
     stock_news = await asyncio.to_thread(ta_server.get_indian_stock_news, ticker, stock_name)
     if log_func: await log_func(f"  └─ Found {len(stock_news.get('latest_news_headlines', []))} articles.")
         
-    if log_func: await log_func("[NEWS] Step 5/6: Fetching Global Macro News (ET + Google)...")
+    if log_func: await log_func("[NEWS] Step 5/6: Fetching Global Macro News (ET + Google + More)...")
     global_news = await asyncio.to_thread(ta_server.get_global_market_news)
     if log_func: await log_func(f"  └─ Found {len(global_news.get('global_headlines', []))} articles.")
     

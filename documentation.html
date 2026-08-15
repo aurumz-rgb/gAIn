@@ -74,7 +74,7 @@
         <p>The name <strong>gAIn.</strong> originally stood for the use of AI in predicting stock market. The initial concept was to build a system that utilized Large Language Models — particularly large-context models like the <strong>GLM series</strong> — to read vast amounts of financial news, parse historical balance sheets, and output trading predictions.</p>
         <p>However, during development, a fundamental decision was made: <strong>financial predictions ought to be done via strict calculations, not AI hallucinations.</strong> Relying on an AI to determine exact entry and stop-loss prices introduced too much unpredictability. Therefore, the AI component was completely stripped out.</p>
         <p><strong>There is absolutely NO AI involved in the current system.</strong> Every number, target, and trend you see is calculated deterministically using pure, textbook technical analysis math executed via Python and Pandas.</p>
-        <p><strong>However, I am too lazy to think of a bettername, so the old one stays.</strong></p>
+        <p><strong>However, I am too lazy to think of a better name, so the old one stays.</strong></p>
 
         <h2>Architecture Overview</h2>
         <p>The application is split into a decoupled Frontend and Backend architecture, allowing for seamless live updates without relying on heavy processing for every tick.</p>
@@ -84,58 +84,85 @@
             <li><strong>Data Server (<code>server.py</code>):</strong> A local Python script spawned by the backend. It contains the "Tools" (functions) that fetch Yahoo Finance data, NSE profiles, and live RSS news feeds.</li>
         </ul>
 
+        <h2>Input Format</h2>
+        <p>You simply type the ticker (e.g., <code>RELIANCE</code>). The system handles the mapping to the correct Yahoo Finance suffix (e.g., <code>.NS</code>). Position sizing based on user capital has been removed to focus purely on signal generation.</p>
+
         <h2>The Mathematics (Explained Simply)</h2>
-        <p>All math is calculated natively in Python using Pandas to ensure 100% accuracy. Below is exactly how each value is calculated.</p>
+        <p>All math is calculated natively in Python using Pandas to ensure 100% accuracy. To ensure timeframe consistency, Trade Setup levels (Entry, Stop, Target) are derived from <strong>Daily Data (1d)</strong>, while Momentum and Charts are derived from <strong>Intraday Data (5m)</strong>.</p>
 
-        <h3>Short Term Math (24-Hour Data, 5-Minute Intervals)</h3>
+        <h3>Intraday Math (5-Minute Intervals)</h3>
         <ul>
-            <li><strong>VWAP (Volume Weighted Average Price):</strong> The ultimate institutional average price.<br><code>Formula: Cumulative(Typical Price * Volume) / Cumulative(Volume)</code><br>Where <code>Typical Price = (High + Low + Close) / 3</code>. If price > VWAP, buyers are in control.</li>
-            <li><strong>RSI (Relative Strength Index):</strong> Measures the speed and change of price movements over 14 periods.<br><code>Formula: 100 - [100 / (1 + (Average Gain / Average Loss))]</code><br>If RSI > 70, overbought. If RSI < 30, oversold.</li>
-            <li><strong>Stochastic RSI:</strong> Applies the RSI formula to RSI itself to find extreme edges over 14 periods.<br><code>Formula: (Current RSI - Lowest RSI) / (Highest RSI - Lowest RSI)</code></li>
-            <li><strong>MACD (Moving Average Convergence Divergence):</strong> Shows momentum.<br><code>Formula: 12-period EMA - 26-period EMA</code><br>Signal Line is <code>9-period EMA of MACD</code>.</li>
-            <li><strong>Bollinger Bands:</strong> Volatility bands around the price over 20 periods.<br><code>Upper Band: 20-SMA + (2 * Std Dev)</code><br><code>Lower Band: 20-SMA - (2 * Std Dev)</code></li>
-            <li><strong>ATR (Average True Range):</strong> Measures daily price movement range over 14 periods.<br><code>True Range = max(High-Low, abs(High-PrevClose), abs(Low-PrevClose))</code><br><code>ATR = Average of True Range</code></li>
+            <li><strong>Session VWAP (Volume Weighted Average Price):</strong> The average price weighted by volume for today's trading session.<br><code>Formula: Cumulative(Typical Price * Volume) / Cumulative(Volume)</code><br>If current price > Session VWAP, intraday buyers currently have an advantage.</li>
+            <li><strong>Intraday ADX (5m):</strong> Measures intraday trend strength. If ADX > 25, the trend is strong. If ADX < 25, the market is sideways/choppy, and the system disables trades to prevent whipsaw losses.</li>
+            <li><strong>RSI (Relative Strength Index):</strong> Compares the magnitude of recent gains to recent losses. RSI >70 indicates strong/possibly overextended momentum; RSI <30 indicates weak/possibly oversold momentum.</li>
+            <li><strong>Stochastic RSI:</strong> Applies the RSI formula to RSI itself to find extreme edges over 14 periods.</li>
+            <li><strong>MACD (Moving Average Convergence Divergence):</strong> Shows momentum by comparing 12-period and 26-period EMAs.</li>
         </ul>
 
-        <h3>Long Term Math (1-Year Daily Data)</h3>
+        <h3>Daily Math (Trade Setup & Long-Term Levels)</h3>
         <ul>
+            <li><strong>Daily Bollinger Bands (20, 2):</strong> Volatility bands around the price. Touching an outer band indicates an unusually large move relative to recent volatility, not necessarily that price is overvalued or undervalued.</li>
+            <li><strong>Daily ATR (14):</strong> Measures how much the stock price moves up and down in a day. Used for the Stop Loss calculation.</li>
             <li><strong>50-DMA & 200-DMA:</strong> Simple Moving Averages over 50 and 200 days. If 50-DMA > 200-DMA, it's an uptrend (Golden Cross). If below, downtrend (Death Cross).</li>
-            <li><strong>Fibonacci Retracement:</strong> Horizontal support/resistance lines based on the golden ratio, derived from the 52-Week High and Low.<br><code>Levels: 0%, 23.6%, 38.2%, 50%, 61.8%, 100%</code></li>
+            <li><strong>Fibonacci Retracement:</strong> Horizontal support/resistance lines based on the golden ratio, derived from the 52-Week High and Low.</li>
         </ul>
 
-        <h3>Trade Setup & Risk Management (How Targets are Calculated)</h3>
+        <h3>Trade Setup, Trend Filters & Risk Management</h3>
+        <p>This system uses strict trend-following principles and macro-filters to avoid systematic traps.</p>
         <ul>
-            <li><strong>Entry (Buy):</strong> <code>max(20-day Lower Bollinger Band, 24-hour Low)</code></li>
-            <li><strong>Target (Sell):</strong> <code>min(20-day Upper Bollinger Band, 24-hour High)</code></li>
-            <li><strong>Stop Loss:</strong> <code>Entry Price - (ATR * 1.5)</code></li>
-            <li><strong>Risk/Reward Ratio:</strong> <code>(Target - Entry) / (Entry - Stop Loss)</code>. The system strictly says "WAIT" if this drops below 1.5.</li>
+            <li><strong>Trend Regime:</strong> If 50-DMA > 200-DMA, the system looks for LONG setups. If 50-DMA < 200-DMA (Death Cross), the system looks for SHORT setups and disables BUY signals entirely.</li>
+            <li><strong>Nifty Trend Filter:</strong> The backend simultaneously fetches the Nifty 50 trend. If Nifty is crashing, individual stock BUY signals are downgraded to "WAIT (Nifty is down)".</li>
+            <li><strong>Entry (LONG):</strong> <code>max(Daily Lower Bollinger Band, 24-hour Low)</code></li>
+            <li><strong>Target (LONG):</strong> <code>min(Daily Upper Bollinger Band, 24-hour High)</code></li>
+            <li><strong>Entry (SHORT):</strong> <code>min(Daily Upper Bollinger Band, 24-hour High)</code> *(short only if price rallies to this level)*</li>
+            <li><strong>Target (SHORT):</strong> <code>max(Daily Lower Bollinger Band, 24-hour Low)</code></li>
+            <li><strong>Stop Loss:</strong> <code>Entry Price +/- (Daily ATR * 1.5)</code></li>
+            <li><strong>Realistic Indian Costs:</strong> Net Reward subtracts STT (0.1% turnover), Exchange Txn, GST, SEBI fees, Stamp Duty, and Slippage.</li>
+            <li><strong>Dynamic Risk/Reward:</strong> The required Net R:R is strictly <code>1.5</code> in low volatility, but jumps to <code>2.5</code> in high volatility (when Daily ATR > 2% of price).</li>
+            <li><strong>NO TRADE Hierarchy:</strong> If Net R:R <= 0, system outputs "NO TRADE (Negative Net Reward)". If R:R is positive but below requirement, it outputs "AVOID / NO TRADE". If ADX < 25, it outputs "WAIT".</li>
         </ul>
 
-        <h3>Predictions (Next 1-3 Hours & Market Close)</h3>
-        <p>Predictions use a dynamic bias multiplier derived from the Quant Score: <code>Bias = Quant Score / 8.0</code>. This tightens or expands the ATR range based on momentum.</p>
+        <h3>ATR Volatility Envelope (Projections)</h3>
+        <p>Projections use a dynamic bias multiplier derived from the Technical Score. This is a volatility envelope, not a directional price prediction. The math scales Daily ATR by the exact fraction of the trading day remaining (6.25 hours total).</p>
         <ul>
-            <li><strong>1-Hour Projection:</strong> <code>Current Price +/- (0.5 * ATR * max(0.2, 1 +/- Bias))</code></li>
-            <li><strong>2-Hour Projection:</strong> <code>Current Price +/- (1.0 * ATR * max(0.2, 1 +/- Bias))</code></li>
-            <li><strong>3-Hour Projection:</strong> <code>Current Price +/- (1.5 * ATR * max(0.2, 1 +/- Bias))</code></li>
-            <li><strong>Market Close:</strong> Uses the exact hours remaining to 15:15 IST multiplied by ATR and the bias factor.</li>
+            <li><strong>1-Hour Projection:</strong> <code>Current Price +/- (Daily ATR * (1/6.25) * max(0.5, 1 +/- Bias))</code></li>
+            <li><strong>Market Close:</strong> <code>Current Price +/- (Daily ATR * (Hours to Close / 6.25) * max(0.5, 1 +/- Bias))</code></li>
+        </ul>
+        
+        <h3>Relative Volatility Gate</h3>
+        <p>The system calculates the 90-day ATR percentile rank. 
+            <ul>
+                <li>< 20% = Very low volatility</li>
+                <li>> 80% = Elevated volatility</li>
+                <li>> 95% = Extreme volatility (Hard NO TRADE threshold)</li>
+            </ul>
+        </p>
+
+        <h3>Rolling OOS Validation (Walk-Forward Backtest)</h3>
+        <p>The system runs a deterministic backtest using a 5-year Train / 1-year Test rolling window. It uses conservative same-day execution assumptions and deducts realistic costs.</p>
+        <ul>
+            <li><strong>Metrics:</strong> Win Rate, Profit Factor, Mean Expectancy (R/Trade), Max Drawdown.</li>
+            <li><strong>Portfolio Simulation:</strong> Simulates a ₹10L portfolio risking 1% per trade to calculate CAGR, Daily Sharpe, and Daily Sortino ratios.</li>
+            <li><strong>Bootstrap CI:</strong> Runs 5,000 Monte Carlo simulations to calculate the 95% Confidence Interval for Expectancy and Max Drawdown.</li>
+            <li><strong>Robustness Check:</strong> Tests ATR multipliers (1.0, 1.5, 2.0) on the exact same OOS periods to ensure the strategy isn't fragile.</li>
         </ul>
 
-        <h2>Data Sources</h2>
+        <h2>Data Sources & Fallbacks</h2>
         <ul>
-            <li><strong>Yahoo Finance API:</strong> Used for OHLC (Open, High, Low, Close) historical data, real-time prices, and company profiles.</li>
-            <li><strong>Stooq:</strong> Fallback real-time price verification.</li>
-            <li><strong>NSE India API:</strong> Primary source for company sectors and industries.</li>
-            <li><strong>News Aggregators (RSS):</strong> Scraped live for both Stock-Specific and Global/Macro news. Sources include Google News, Yahoo Finance, Economic Times, Moneycontrol, Livemint, and Business Standard.</li>
+            <li><strong>Yahoo Finance API:</strong> Primary source for 5m intraday OHLCV and 2y daily historical data. (Uses explicit browser headers to bypass blocks).</li>
+            <li><strong>Stooq:</strong> 10-year daily historical fallback if Yahoo blocks the server IP.</li>
+            <li><strong>NSE India API:</strong> Fallback for company fundamentals (P/E, P/B, ROE) if Yahoo fails.</li>
+            <li><strong>News Aggregators (RSS):</strong> Scraped live for Stock-Specific and Global/Macro news. (Note: News is displayed for user context only and is NOT factored into the mathematical quant score).</li>
         </ul>
 
         <h2>⚙️ How It Works (Step-by-Step)</h2>
         <ol>
             <li>User types a ticker (e.g., <code>RELIANCE</code>) in the terminal.</li>
-            <li>The Frontend sends a POST request to the FastAPI backend and starts a 5-second polling loop.</li>
-            <li>The Backend runs the data engine, calling 5 core functions: <code>get_company_profile</code>, <code>get_bid_ask_targets</code>, <code>get_long_term_analysis</code>, <code>get_indian_stock_news</code>, and <code>get_global_market_news</code>.</li>
-            <li>The Server fetches raw data from Yahoo/NSE/RSS feeds, runs the Pandas mathematical calculations, and structures it into JSON.</li>
+            <li>The Frontend sends a POST request to the FastAPI backend and starts a 2-second polling loop.</li>
+            <li>The Backend runs the data engine, fetching 5m intraday data, 2y daily data (or Stooq 10y fallback), and Nifty trend.</li>
+            <li>The Server fetches raw data, runs the Pandas mathematical calculations, applies the trend-following + macro + R:R + ADX filters, and structures it into JSON.</li>
             <li>The Backend formats this JSON into a Markdown string with <code>[CHART:...]</code> tags and sends it back.</li>
-            <li>The Frontend parses the Markdown, renders the text with yellow/green syntax highlights, and draws the Plotly charts exactly where the tags are placed without resetting zoom levels.</li>
+            <li>The Frontend parses the Markdown, renders the text with yellow/green syntax highlights (using Indian comma formatting), and draws the Plotly charts exactly where the tags are placed without resetting zoom levels or jumping your scroll position.</li>
         </ol>
 
         <a href="index.html" class="back-link">← Back to Terminal</a>

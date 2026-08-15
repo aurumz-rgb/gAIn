@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import logging
 import server as ta_server
 import os
@@ -11,9 +11,12 @@ import time
 import asyncio
 import traceback
 from dotenv import load_dotenv
+import pandas as pd
 
 load_dotenv()
 app = FastAPI()
+
+IST = timezone(timedelta(hours=5, minutes=30))
 
 app.add_middleware(
     CORSMiddleware,
@@ -31,63 +34,105 @@ YELLOW_STYLE = "background-color: #2d2d2d; padding: 2px 6px; border-radius: 4px;
 GREEN_COLOR = "rgb(159, 222, 161)"
 
 def y(text):
-    """Yellow highlight from documentation.html code element style"""
     return f'<span style="{YELLOW_STYLE}">{text}</span>'
 
 def g(text):
-    """Green highlight from documentation.html h1-h4 style"""
     return f'<span style="color: {GREEN_COLOR};">{text}</span>'
 
 def view_link(url):
-    """Yellow highlighted [View] link for news"""
     if url:
         return f' <a href="{url}" target="_blank" style="{YELLOW_STYLE} text-decoration: none;">[View]</a>'
     return ""
 
-def analyze_news_sentiment(headlines):
-    bull_words = ["rally", "profit", "upgrade", "deal", "surge", "record", "approve", "win", "beat", "growth", "boost", "rise"]
-    bear_words = ["crash", "ban", "fraud", "loss", "downgrade", "fall", "probe", "warning", "tax", "sell", "drag", "drop", "slide"]
-    sentiment_score = 0
-    matched_words = []
-    for h in headlines:
-        h_text = h['text'] if isinstance(h, dict) else h
-        h_lower = h_text.lower()
-        for w in bull_words:
-            if w in h_lower and w not in matched_words:
-                sentiment_score += 1
-                matched_words.append(w)
-        for w in bear_words:
-            if w in h_lower and w not in matched_words:
-                sentiment_score -= 1
-                matched_words.append(w)
-    return max(-2, min(2, sentiment_score)), matched_words
+def fmt_in(num):
+    if num is None or not isinstance(num, (int, float)) or pd.isna(num):
+        return "N/A"
+    try:
+        s = f"{abs(float(num)):,.2f}"
+        parts = s.split(".")
+        int_part = parts[0].replace(",", "")
+        dec_part = parts[1]
+        if len(int_part) > 3:
+            last3 = int_part[-3:]
+            rest = int_part[:-3]
+            rest = rest[::-1]
+            chunks = [rest[i:i+2] for i in range(0, len(rest), 2)]
+            rest = ",".join(chunks)[::-1]
+            int_part = f"{rest},{last3}"
+        res = f"{int_part}.{dec_part}"
+        return f"-{res}" if float(num) < 0 else res
+    except:
+        return str(num)
 
-def determine_action(final_score, rr_ratio):
-    if final_score >= 2 and rr_ratio >= 1.5:
-        return "BUY"
-    elif final_score <= -2 and rr_ratio >= 1.5:
-        return "SELL / AVOID"
-    else:
-        return "WAIT"
+def determine_action(tech_score, net_rr_ratio, lt_trend, adx_val, volatility_state, direction, nifty_trend, atr_percentile, earnings_risk, data_age, daily_hist_days, oos_expectancy):
+    if data_age > 300:
+        return "NO TRADE (Data Stale)"
+    if daily_hist_days < 200:
+        return "NO TRADE (Daily History Unavailable)"
+    if earnings_risk:
+        return "WAIT (Event Risk - Earnings Soon)"
+    if atr_percentile > 95:
+        return "NO TRADE (Extreme Relative Volatility)"
+    if oos_expectancy is not None and oos_expectancy <= 0:
+        return "NO TRADE (Negative OOS Expectancy)"
+        
+    req_rr = 2.5 if volatility_state == "High volatility" else 1.5
+    
 
-def generate_beginner_guide(name, action, cp, entry, stop, target_price, lt_trend, lt_buy, lt_sell, final_score, rr_ratio):
-    if action == "BUY":
-        action_emoji = "🟢 CONSIDER BUYING"
-        st_advice = f"**Short term:**\nDon't chase the stock at the current price of ₹{cp}. Wait for it to hit the buy zone.\n\n* **Buy:** {y(f'₹{entry}')}\n* **Target:** {y(f'₹{target_price}')}\n* **Stop:** {y(f'₹{stop}')}"
-    elif action == "SELL / AVOID":
-        action_emoji = "🔴 AVOID / SELL ON RISE"
-        st_advice = f"**Short term:**\nThe math says **{y('SELL')}**. It is risky to buy at the current price of ₹{cp}. If you already own it, consider selling.\n\n* **Buy (High Risk):** {y(f'₹{entry}')}\n* **Target:** {y(f'₹{target_price}')}\n* **Stop:** {y(f'₹{stop}')}"
-    else:
-        action_emoji = "🟡 WAIT"
-        reason = "The stock is moving sideways and several signals disagree." if -1 <= final_score <= 1 else "The Risk/Reward ratio is not attractive enough."
-        st_advice = f"**Short term:**\nDon't buy at {y(f'₹{cp}')}. Better entry: **{y(f'₹{entry}')}**\n\nIf it reaches that area:\n* **Buy:** {y(f'₹{entry}')}\n* **Target:** {y(f'₹{target_price}')}\n* **Stop:** {y(f'₹{stop}')}\n\n**Why?**\n{reason} There's not enough evidence for a strong trade."
+    fail_reasons = []
+    if net_rr_ratio <= 0:
+        fail_reasons.append("Negative Net Reward")
+    elif net_rr_ratio < req_rr:
+        fail_reasons.append(f"R:R < {req_rr}")
+        
+    if adx_val < 25:
+        fail_reasons.append("ADX < 25")
+        
+    if fail_reasons:
+        if direction == "SHORT" and lt_trend == "BEARISH":
+            return f"🔴 AVOID / NO TRADE (Failed: {', '.join(fail_reasons)})"
+        return f"🟡 WAIT (Failed: {', '.join(fail_reasons)})"
+    
 
     if lt_trend == "BEARISH":
-        lt_advice = f"**Long term:**\nCurrent trend is {y('weak')}. **Wait for a stronger entry around {y(f'₹{lt_buy}')}** rather than buying heavily now."
+        if direction == "SHORT" and tech_score <= -2:
+            if nifty_trend >= 2:
+                return "WAIT (Nifty is strongly up)"
+            return "SHORT"
+        return "AVOID"
     else:
-        lt_advice = f"**Long term:**\nThe larger trend is bullish. You can hold, with a potential longer-term target around **₹{lt_sell}**."
+        if direction == "LONG" and tech_score >= 2:
+            if nifty_trend <= -2:
+                return "WAIT (Nifty is down)"
+            return "BUY"
+        return "WAIT"
 
-    return f"""### {name} — {g('WHAT SHOULD I DO RIGHT NOW?')} | Current Price :  **{y(f'₹{cp}')}**
+def generate_beginner_guide(name, action, cp, entry, stop, target_price, lt_trend, lt_buy, lt_sell, tech_score, net_rr_ratio, direction, st_trend):
+    if action == "BUY":
+        action_emoji = "🟢 CONSIDER BUYING"
+        st_advice = f"**Short term:**\nMomentum is bullish. Don't chase the stock at the current price of ₹{fmt_in(cp)}. Wait for it to hit the buy zone.\n\n* **Buy:** {y(f'₹{fmt_in(entry)}')}\n* **Target:** {y(f'₹{fmt_in(target_price)}')}\n* **Stop:** {y(f'₹{fmt_in(stop)}')}"
+    elif action == "SHORT":
+        action_emoji = "🔴 CONSIDER SHORTING"
+        st_advice = f"**Short term:**\nThe trend is down. Consider shorting on a rise to the entry zone.\n\n* **Short Entry:** {y(f'₹{fmt_in(entry)}')}\n* **Target (Buy Back):** {y(f'₹{fmt_in(target_price)}')}\n* **Stop Loss:** {y(f'₹{fmt_in(stop)}')}"
+    elif "AVOID" in action:
+        action_emoji = "🔴 AVOID / NO TRADE"
+        st_advice = f"**Short term:**\nMomentum is {st_trend.lower()}, but the broader trend remains bearish. A short-on-rise setup exists, but it fails the minimum R:R requirement after costs. Do not trade."
+    elif "NO TRADE" in action:
+        action_emoji = "⛔ NO TRADE"
+        st_advice = f"**Short term:**\nConditions are unsafe for trading (Extreme Volatility, Stale Data, or Negative Net Reward). Capital preservation is priority."
+    else:
+        action_emoji = "🟡 WAIT"
+        reason = "Market is sideways, signals are mixed, or R:R is insufficient after costs." if "sideways" in action or "Failed" in action or "costs" in action else "Event Risk is pending."
+        st_advice = f"**Short term:**\nDon't buy at {y(f'₹{fmt_in(cp)}')}. Better entry: **{y(f'₹{fmt_in(entry)}')}**\n\nIf it reaches that area:\n* **Buy:** {y(f'₹{fmt_in(entry)}')}\n* **Target:** {y(f'₹{fmt_in(target_price)}')}\n* **Stop:** {y(f'₹{fmt_in(stop)}')}\n\n**Why?**\n{reason}"
+
+    if lt_trend == "BEARISH":
+        lt_advice = f"**Long term:**\nCurrent trend bias is bearish. Monitor the ₹{fmt_in(lt_buy)} area for potential support, but require price stabilization and confirmation before considering a long-term entry."
+    elif lt_trend == "UNKNOWN":
+        lt_advice = f"**Long term:**\nData unavailable to determine long-term trend."
+    else:
+        lt_advice = f"**Long term:**\nThe larger trend bias is bullish. You can hold, with a potential longer-term target around **₹{fmt_in(lt_sell)}**."
+
+    return f"""### {name} — {g('WHAT SHOULD I DO RIGHT NOW?')} | Current Price :  **{y(f'₹{fmt_in(cp)}')}**
 
 **Current decision: {action_emoji}**
 
@@ -97,46 +142,31 @@ def generate_beginner_guide(name, action, cp, entry, stop, target_price, lt_tren
 {lt_advice}
 """
 
-def generate_why_not_trade(action, reasons, rr_ratio):
-    if action != "WAIT": 
-        return ""
-    
-    neg_reasons = []
-    for r in reasons:
-        if any(word in r for word in ["Bearish", "Sellers", "Downtrend", "Death", "Dry Up", "Overextended", "Dump"]):
-            neg_reasons.append(r)
-            
-    text = "### 🚫 Why I'm NOT recommending a trade\n\n"
-    if rr_ratio < 1.5:
-        text += f"* Risk/Reward ratio is only {rr_ratio}:1 (minimum 1.5 required).\n"
-    if neg_reasons:
-        for r in neg_reasons:
-            text += f"* {r}\n"
-    text += "\n**Therefore: WAIT.**"
-    return text
-
-def generate_markdown(ticker, profile, short_term, long_term, stock_news, global_news, final_score, action, rr_ratio):
+def generate_markdown(ticker, profile, short_term, long_term, stock_news, global_news, tech_score, action, net_rr_ratio, req_rr, backtest_data, nifty_trend, fundamentals, earnings_risk, data_source, data_age, daily_hist_days):
     name = profile.get("name", ticker)
-   
     company_desc = profile.get("description", "N/A")
     cp = short_term.get("current_price", "N/A")
     
-    tech_score = short_term.get("quant_score", 0)
     reasons = short_term.get("quant_reasons", [])
-    stock_news_list = stock_news.get('latest_news_headlines', [])
-    news_sentiment, matched_words = analyze_news_sentiment(stock_news_list)
     
-    sma_50 = short_term.get("sma_50", 0)
+    sma_50 = long_term.get("moving_averages", {}).get("sma_50", 0)
     sma_200 = long_term.get("moving_averages", {}).get("sma_200", 0)
-    lt_trend = "BEARISH" if sma_50 < sma_200 else "BULLISH"
     
-    if final_score >= 2: st_trend = "BULLISH"
-    elif final_score <= -2: st_trend = "BEARISH"
+    if sma_50 > 0 and sma_200 > 0:
+        lt_trend = "BEARISH" if sma_50 < sma_200 else "BULLISH"
+    else:
+        lt_trend = "UNKNOWN"
+    
+    if tech_score >= 2: st_trend = "BULLISH"
+    elif tech_score <= -2: st_trend = "BEARISH"
     else: st_trend = "NEUTRAL / SIDEWAYS"
         
-    if st_trend == "BULLISH" and lt_trend == "BEARISH": regime = "RECOVERY / MIXED"
-    elif st_trend == "BEARISH" and lt_trend == "BULLISH": regime = "PULLBACK / WARNING"
-    else: regime = lt_trend
+    if st_trend == "BULLISH" and lt_trend == "BEARISH": 
+        regime = "RECOVERY / MIXED — price has recovered above the 50-DMA, but the 50-DMA remains below the 200-DMA."
+    elif st_trend == "BEARISH" and lt_trend == "BULLISH": 
+        regime = "PULLBACK / WARNING — price has fallen below the 50-DMA, but the 50-DMA remains above the 200-DMA."
+    else: 
+        regime = lt_trend
 
     p6 = short_term.get('performance_windows', {}).get('6h', {})
     p12 = short_term.get('performance_windows', {}).get('12h', {})
@@ -147,8 +177,20 @@ def generate_markdown(ticker, profile, short_term, long_term, stock_news, global
     macd = bc.get('MACD', {})
     bb = bc.get('Bollinger_Bands', {})
     atr = bc.get('ATR', {})
+    adx = bc.get('ADX', {})
     vwap = bc.get('VWAP', {})
     projections = short_term.get('time_projections', [])
+    atr_percentile = bc.get('ATR', {}).get('percentile', 0)
+    
+
+    if atr_percentile > 95:
+        vol_status = "Extreme volatility (NO TRADE)"
+    elif atr_percentile > 80:
+        vol_status = "Elevated volatility"
+    elif atr_percentile < 20:
+        vol_status = "Very low volatility"
+    else:
+        vol_status = "Normal volatility"
     
     proj_str = ""
     seen_times = set()
@@ -158,24 +200,47 @@ def generate_markdown(ticker, profile, short_term, long_term, stock_news, global
         seen_times.add(t)
         p_min = p.get('min', 0)
         p_max = p.get('max', 0)
-        central = round((p_min + p_max) / 2, 2) if p_min and p_max else "N/A"
-        proj_str += f"* At **{y(t)}**, the expected range is **{y(f'₹{p_min} - ₹{p_max}')}** (Central estimate: {y(f'₹{central}')}).\n"
+        proj_str += f"* **{y(t)}**: Expected volatility range (ATR-based) is **{y(f'₹{fmt_in(p_min)} - ₹{fmt_in(p_max)}')}**.\n"
+        
+    
+    if not proj_str:
+        proj_str = "* Market is currently closed. Intraday projections are available during live market hours (09:15 - 15:30 IST)."
             
     targets = short_term.get('actionable_targets', {})
     entry = targets.get('entry', 0)
     stop = targets.get('stop_loss', 0)
     target_price = targets.get('target', 0)
+    direction = targets.get('direction', 'LONG')
     
-    risk_per_share = round(entry - stop, 2) if entry and stop else 0
-    reward_per_share = round(target_price - entry, 2) if entry and target_price else 0
+    risk_per_share = round(abs(entry - stop), 2) if entry and stop else 0
+    reward_per_share = round(abs(target_price - entry), 2) if entry and target_price else 0
+    
+
+    entry_label = f"{y(f'₹{fmt_in(entry)}')}"
+    if direction == "SHORT" and entry > cp:
+        entry_label += " *(short only if price rallies to this level)*"
+        
+    def calc_costs(entry_p, exit_p):
+        turnover = entry_p + exit_p
+        brokerage = 0 
+        stt = (entry_p * 0.001) + (exit_p * 0.001) 
+        exchange_txn = turnover * 0.0000335
+        gst = (brokerage + exchange_txn) * 0.18
+        sebi = turnover * 0.000001
+        stamp_duty = entry_p * 0.00015 
+        slippage = turnover * 0.0005 
+        return brokerage + stt + exchange_txn + gst + sebi + stamp_duty + slippage
+
+    costs = calc_costs(entry, target_price) if entry and target_price else 0
+    net_reward_per_share = round(reward_per_share - costs, 2)
     
     high_52w = long_term.get('52_week_high', 'N/A')
     low_52w = long_term.get('52_week_low', 'N/A')
     ma = long_term.get('moving_averages', {})
     sma_50_str = ma.get('sma_50', 'N/A')
     sma_200_str = ma.get('sma_200', 'N/A')
-    if isinstance(sma_50_str, (int, float)) and isinstance(sma_200_str, (int, float)):
-        dma_status = "the 50-day is above the 200-day, meaning the long-term trend is up" if sma_50_str > sma_200_str else "the 50-day is below the 200-day, meaning the long-term trend is down"
+    if isinstance(sma_50_str, (int, float)) and sma_50_str > 0 and isinstance(sma_200_str, (int, float)) and sma_200_str > 0:
+        dma_status = "the 50-day is above the 200-day, meaning the long-term trend bias is bullish" if sma_50_str > sma_200_str else "the 50-day is below the 200-day, meaning the long-term trend bias is bearish"
     else:
         dma_status = "data unavailable"
     fib = long_term.get('fibonacci_retracement', {})
@@ -183,15 +248,31 @@ def generate_markdown(ticker, profile, short_term, long_term, stock_news, global
     lt_buy = lt_targets.get('buy_target', 'N/A')
     lt_sell = lt_targets.get('sell_target', 'N/A')
     
-    beginner_guide = generate_beginner_guide(name, action, cp, entry, stop, target_price, lt_trend, lt_buy, lt_sell, final_score, rr_ratio)
-    why_not_trade = generate_why_not_trade(action, reasons, rr_ratio)
+    beginner_guide = generate_beginner_guide(name, action, cp, entry, stop, target_price, lt_trend, lt_buy, lt_sell, tech_score, net_rr_ratio, direction, st_trend)
     
-    stock_news_str = "\n".join([f"- {n['text']}{view_link(n.get('url', ''))}" if isinstance(n, dict) else f"- {n}" for n in stock_news_list])
-    global_news_list = global_news.get('global_headlines', [])
-    global_news_str = "\n".join([f"- {n['text']}{view_link(n.get('url', ''))}" if isinstance(n, dict) else f"- {n}" for n in global_news_list])
+    stock_news_str = "\n".join([f"- {n['text']}{view_link(n.get('url', ''))}" if isinstance(n, dict) else f"- {n}" for n in stock_news.get('latest_news_headlines', [])])
+    global_news_str = "\n".join([f"- {n['text']}{view_link(n.get('url', ''))}" if isinstance(n, dict) else f"- {n}" for n in global_news.get('global_headlines', [])])
 
     reasons_str = "\n".join([f"  - {r}" for r in reasons])
-    sentiment_str = f"+{news_sentiment}" if news_sentiment > 0 else str(news_sentiment)
+
+   
+    wf_bt = backtest_data.get('rolling_oos', {})
+    wf_trades = wf_bt.get('total_trades', 0)
+    
+    if wf_trades < 10:
+        wf_str = f"* **OOS Trades:** {wf_trades} (INSUFFICIENT DATA FOR VALIDATION)"
+    else:
+        wf_str = f"""
+* **OOS Win Rate:** {y(f"{wf_bt.get('win_rate', 0)}%")} (95% CI: {wf_bt.get('win_rate_ci_low', 0)}-{wf_bt.get('win_rate_ci_high', 0)}%)
+* **OOS Expectancy (Mean R/Trade):** {y(f"{wf_bt.get('expectancy', 0)}R")} (95% CI: {wf_bt.get('exp_ci_low', 0)}R to {wf_bt.get('exp_ci_high', 0)}R)
+* **OOS Profit Factor:** {y(f"{wf_bt.get('profit_factor', 0)}")}
+* **OOS Max Drawdown:** {y(f"{wf_bt.get('max_dd', 0)}R")} (Bootstrap 95% Worst: {wf_bt.get('mc_dd_95', 0)}R)
+* **Portfolio CAGR:** {y(f"{wf_bt.get('cagr', 0)}%")} vs **Buy & Hold:** {y(f"{wf_bt.get('benchmark_return', 0)}%")}
+* **Daily Sharpe:** {y(f"{wf_bt.get('sharpe', 0)}")} | **Daily Sortino:** {y(f"{wf_bt.get('sortino', 0)}")}
+* **Robustness Test (OOS ATR 1.0/1.5/2.0):** {y(wf_bt.get('robustness', 'N/A'))}
+* **Long Stats:** {wf_bt.get('long_trades', 0)} trades, {wf_bt.get('long_win_rate', 0)}% Win
+* **Short Stats:** {wf_bt.get('short_trades', 0)} trades, {wf_bt.get('short_win_rate', 0)}% Win
+"""
 
     return f"""**⏱️ Current Date & Time:** <span id="live-clock">Loading...</span>
 
@@ -204,64 +285,68 @@ def generate_markdown(ticker, profile, short_term, long_term, stock_news, global
 
 =================================================
 
-### {g('⏱ Where could the price be?')}
-*Disclaimer: These are model-implied volatility ranges based on ATR, not exact predictions.*
+### {g('⏱ ATR Volatility Envelope')}
+*Disclaimer: This is a volatility envelope based on Daily ATR, not a directional price prediction.*
 
 {proj_str}
 
 =================================================
 
 ###  {g('Trade Setup & Risk Management')}
-*Levels derived from 14-day ATR volatility and Bollinger Band support/resistance.*
+*Levels derived from Daily ATR (14), Daily Bollinger Bands (20, 2), and Intraday ADX Trend Strength.*
 * **Action:** {action}
-* **Entry (Buy):** {y(f'₹{entry}')}
-* **Stop Loss:** {y(f'₹{stop}')} (Risk: {y(f'₹{risk_per_share}/share')})
-* **Target (Sell):** {y(f'₹{target_price}')} (Reward: {y(f'₹{reward_per_share}/share')})
-* **Risk/Reward Ratio:** {y(f'{rr_ratio} : 1')}
-* *Note: Do not trade if R:R is below 1.5.*
-
+* **Entry:** {entry_label}
+* **Stop Loss:** {y(f'₹{fmt_in(stop)}')} (Risk: {y(f'₹{fmt_in(risk_per_share)}/share')})
+* **Target:** {y(f'₹{fmt_in(target_price)}')} (Gross Reward: {y(f'₹{fmt_in(reward_per_share)}/share')})
+* **Net Reward (after estimated trading costs/slippage):** {y(f'₹{fmt_in(net_reward_per_share)}/share')}
+* **Net Risk/Reward Ratio:** {y(f'{net_rr_ratio} : 1')} (Required: {req_rr})
+* *Note: Do not trade if R:R is below required threshold or ADX < 25.*
 
 =================================================
 
-### 📶 {g('Signal & Market Regime')}
-* **Short-Term Trend:** {y(st_trend)}
-* **Long-Term Regime:** {y(lt_trend)}
+### 📶 {g('Signal & Market Trend')}
+* **Short-Term Momentum:** {y(st_trend)}
+* **Long-Term Trend:** {y(lt_trend)}
 * **Current Regime:** {y(regime)}
-* **Signal Score:** {final_score} (Tech: {tech_score} | News: {sentiment_str})
+* **Nifty Trend Filter:** {y('Bullish' if nifty_trend > 0 else 'Bearish')} (Score: {nifty_trend})
+* **Heuristic Technical Score:** {tech_score} (Pure Price Action)
+* **Data Source:** {y(data_source)} (Age: {y(f"{data_age}s")})
+* **Daily History Fetched:** {y(f"{daily_hist_days} days")}
+* **90-day ATR percentile rank:** {y(f"{atr_percentile}%")} — {vol_status}; hard no-trade threshold: ≥95%.
+* **Event Risk (Earnings < 3 days):** {y('YES' if earnings_risk else 'NO')}
 
-**Quantitative Reasons:**
+**Technical Reasons:**
 {reasons_str}
 
 ---
 ---
 
-### 🧩 {g('Quantitative Evidence (Math Explained Simply)')}
-* **VWAP (Volume Weighted Average Price):** ₹{vwap.get('value', 'N/A')} - (Formula: Sum of (Typical Price * Volume) / Sum of Volume). This is the average price weighted by volume today. If current price > VWAP, buyers are in control.
-* **RSI (Relative Strength Index):** {rsi.get('value', 'N/A')} - (Formula: 100 - [100 / (1 + Avg Gain / Avg Loss)]). This compares how much the stock goes up vs down. If RSI > 70, it's too expensive. If < 30, it's too cheap.
+### 🧩 {g('The Math Explained Simply')}
+* **Session VWAP:** ₹{fmt_in(vwap.get('value', 'N/A'))} - The average price weighted by volume for today's trading session. If current price > Session VWAP, intraday buyers currently have an advantage.
+* **Intraday ADX (5m):** {adx.get('value', 'N/A')} - Measures intraday trend strength. If ADX > 25, the trend is strong. If < 25, the market is sideways and choppy.
+* **RSI (Relative Strength Index):** {rsi.get('value', 'N/A')} - Compares the magnitude of recent gains to recent losses. RSI >70 indicates strong/possibly overextended momentum; RSI <30 indicates weak/possibly oversold momentum.
 [CHART:RSI]
-* **Stoch RSI (Stochastic RSI):** {stoch_rsi.get('value', 'N/A')} - (Formula: (Current RSI - Lowest RSI) / (Highest RSI - Lowest RSI)). This shows if RSI is at the extreme end of its range.
+* **Stoch RSI (Stochastic RSI):** {stoch_rsi.get('value', 'N/A')} - Shows if RSI is at the extreme end of its range.
 [CHART:STOCH_RSI]
-* **MACD (Moving Average Convergence Divergence):** {macd.get('macd_line', 'N/A')} vs {macd.get('signal_line', 'N/A')} - (Formula: 12-day EMA - 26-day EMA). This shows the difference between the 12-day and 26-day averages. If positive, the short-term average is higher.
+* **MACD (Moving Average Convergence Divergence):** {macd.get('macd_line', 'N/A')} vs {macd.get('signal_line', 'N/A')} - Shows momentum by comparing 12-day and 26-day averages.
 [CHART:MACD]
-* **Bollinger Bands:** Upper ₹{bb.get('upper_band', 'N/A')}, Lower ₹{bb.get('lower_band', 'N/A')} - (Formula: 20-day SMA +/- 2 Standard Deviations). These are lines that show where prices usually go. When price hits the top, it's high; when it hits the bottom, it's low.
-* **ATR (Average True Range):** {atr.get('value', 'N/A')} - (Formula: Average of True Range over 14 days). This measures how much the stock price moves up and down in a day. Higher ATR means more movement.
+* **Daily Bollinger Bands:** Upper ₹{fmt_in(bb.get('upper_band', 'N/A'))}, Lower ₹{fmt_in(bb.get('lower_band', 'N/A'))} - Bollinger Bands measure price volatility relative to its moving average. Touching an outer band indicates an unusually large move relative to recent volatility, not necessarily that price is overvalued or undervalued.
+* **Daily ATR (Average True Range):** {atr.get('value', 'N/A')} - Measures how much the stock price moves up and down in a day.
 
-**Last 24 Hours Performance:**
-* **{y('6H')}:** Changed by {y(f"{p6.get('change_pct', 'N/A')}%")} (High {y(f"₹{p6.get('high', 'N/A')}")}, Low {y(f"₹{p6.get('low', 'N/A')}")})
-* **{y('12H')}:** Changed by {y(f"{p12.get('change_pct', 'N/A')}%")} (High {y(f"₹{p12.get('high', 'N/A')}")}, Low {y(f"₹{p12.get('low', 'N/A')}")})
-* **{y('24H')}:** Changed by {y(f"{p24.get('change_pct', 'N/A')}%")} (High {y(f"₹{p24.get('high', 'N/A')}")}, Low {y(f"₹{p24.get('low', 'N/A')}")})
+**Recent Trading Hours Performance:**
+* **{y('~6 Hours')}:** Changed by {y(f"{p6.get('change_pct', 'N/A')}%")} (High {y(f"₹{fmt_in(p6.get('high', 'N/A'))}")}, Low {y(f"₹{fmt_in(p6.get('low', 'N/A'))}")})
+* **{y('~12 Hours')}:** Changed by {y(f"{p12.get('change_pct', 'N/A')}%")} (High {y(f"₹{fmt_in(p12.get('high', 'N/A'))}")}, Low {y(f"₹{fmt_in(p12.get('low', 'N/A'))}")})
+* **{y('~24 Hours')}:** Changed by {y(f"{p24.get('change_pct', 'N/A')}%")} (High {y(f"₹{fmt_in(p24.get('high', 'N/A'))}")}, Low {y(f"₹{fmt_in(p24.get('low', 'N/A'))}")})
 
 =================================================
 
-###  {g('Long Term Math (1 Year Data)')}
-* **52-Week High:** ₹{high_52w} | **52-Week Low:** ₹{low_52w}
-* **50-DMA & 200-DMA (Daily Moving Averages):** ₹{sma_50_str} & ₹{sma_200_str} - (Formula: Average price over 50 and 200 days). These are like 50-day and 200-day averages. If the 50-day is above the 200-day, the trend is up. If below, the trend is down. Here {dma_status}.
-* **Fibonacci Levels:** 0% at ₹{fib.get('0%', 'N/A')}, 23.6% at ₹{fib.get('23.6%', 'N/A')}, 38.2% at ₹{fib.get('38.2%', 'N/A')}, 50% at ₹{fib.get('50%', 'N/A')}, 61.8% at ₹{fib.get('61.8%', 'N/A')}, 100% at ₹{fib.get('100%', 'N/A')}.
+###  {g('Long-Term Technical Levels')}
+* **52-Week High:** ₹{fmt_in(high_52w)} | **52-Week Low:** ₹{fmt_in(low_52w)}
+* **50-DMA & 200-DMA (Daily Moving Averages):** ₹{fmt_in(sma_50_str)} & ₹{fmt_in(sma_200_str)} - Average price over 50 and 200 days. Here {dma_status}.
+* **Potential Support Zone (52W Low / Fib 100%):** ₹{fmt_in(lt_buy)}
+* **Potential Resistance Zone (52W High / Fib 0%):** ₹{fmt_in(lt_sell)}
 [CHART:LONG_TERM]
 
-**Long Term Targets:**
-* **Buy/Bid at:** ₹{lt_buy} (Based on nearest 1-year Fibonacci support level).
-* **Sell at:** ₹{lt_sell} (Based on nearest 1-year Fibonacci resistance level for max profit).
 
 ---
 ---
@@ -281,73 +366,87 @@ def generate_markdown(ticker, profile, short_term, long_term, stock_news, global
 """
 
 async def process_data(ticker, stock_name, log_func=None):
-    if log_func: await log_func("[SYSTEM] Initializing gAIn backend...")
-    if log_func: await log_func(f"[INPUT] Ticker requested: {ticker}")
+    if log_func: await log_func(f"[SYSTEM] Initializing gAIn backend for {ticker}...")
     
-    if log_func: await log_func("[DATA] Step 1/6: Fetching Company Profile (NSE/Yahoo)...")
+    if log_func: await log_func("[DATA] Step 1/8: Fetching Company Profile...")
     profile = await asyncio.to_thread(ta_server.get_company_profile, ticker)
-    if log_func: await log_func(f"  └─ Profile: {profile.get('name', 'N/A')}")
     
-    if log_func: await log_func("[DATA] Step 2/6: Fetching Live Price & 24h OHLCV data (5m interval)...")
-    short_term = await asyncio.to_thread(ta_server.get_bid_ask_targets, ticker)
-    if log_func:
-        await log_func("[MATH] Step 2.1: Calculating Short Term Math...")
-        bc = short_term.get('background_calculations', {})
-        await log_func(f"  ├─ RSI (14): {bc.get('RSI_14', {}).get('value', 'N/A')} ({bc.get('RSI_14', {}).get('status', 'N/A')})")
-        await log_func(f"  ├─ Stoch RSI: {bc.get('Stoch_RSI', {}).get('value', 'N/A')} ({bc.get('Stoch_RSI', {}).get('status', 'N/A')})")
-        await log_func(f"  ├─ MACD: {bc.get('MACD', {}).get('macd_line', 'N/A')} vs Signal {bc.get('MACD', {}).get('signal_line', 'N/A')} ({bc.get('MACD', {}).get('momentum', 'N/A')})")
-        await log_func(f"  ├─ VWAP: ₹{bc.get('VWAP', {}).get('value', 'N/A')} ({bc.get('VWAP', {}).get('status', 'N/A')})")
-        await log_func(f"  ├─ Bollinger Bands: Upper ₹{bc.get('Bollinger_Bands', {}).get('upper_band', 'N/A')}, Lower ₹{bc.get('Bollinger_Bands', {}).get('lower_band', 'N/A')}")
-        await log_func(f"  └─ ATR (14): {bc.get('ATR', {}).get('value', 'N/A')} ({bc.get('ATR', {}).get('interpretation', 'N/A')})")
-        await log_func("[CHART] Step 2.2: Generating 24h Price, RSI, Stoch RSI, MACD Plotly graphs...")
-    
-    if log_func: await log_func("[DATA] Step 3/6: Fetching Long Term Data (1Y Daily candles)...")
+    if log_func: await log_func("[DATA] Step 2/8: Fetching 10 Year Daily Data (SMAs, ATR Percentile & Backtest)...")
     long_term = await asyncio.to_thread(ta_server.get_long_term_analysis, ticker)
-    if log_func:
-        await log_func("[MATH] Step 3.1: Calculating Long Term Math...")
-        ma = long_term.get('moving_averages', {})
-        await log_func(f"  ├─ 50-DMA: ₹{ma.get('sma_50', 'N/A')} | 200-DMA: ₹{ma.get('sma_200', 'N/A')} ({ma.get('cross_status', 'N/A')})")
-        await log_func(f"  ├─ 52-Week High: ₹{long_term.get('52_week_high', 'N/A')} | Low: ₹{long_term.get('52_week_low', 'N/A')}")
-        await log_func(f"  └─ Fibonacci Levels mapped.")
-        await log_func("[CHART] Step 3.2: Generating 1-Year Price & DMA Plotly graph...")
+    daily_sma_50 = long_term.get("moving_averages", {}).get("sma_50", 0)
+    daily_sma_200 = long_term.get("moving_averages", {}).get("sma_200", 0)
+    daily_atr_percentile = long_term.get("atr_percentile", 0)
+    daily_hist_days = long_term.get("history_days", 0)
     
-    if log_func: await log_func("[NEWS] Step 4/6: Fetching Stock Specific News (Google + Yahoo + More)...")
+    if log_func: await log_func("[DATA] Step 3/8: Fetching Live Price & Intraday Data (5m)...")
+    short_term = await asyncio.to_thread(ta_server.get_bid_ask_targets, ticker, daily_sma_50, daily_sma_200, daily_atr_percentile)
+    
+    if log_func: await log_func("[MACRO] Step 4/8: Fetching Nifty 50 Trend...")
+    nifty_daily = await asyncio.to_thread(ta_server.get_long_term_analysis, "^NSEI")
+    nifty_sma_50 = nifty_daily.get("moving_averages", {}).get("sma_50", 0)
+    nifty_sma_200 = nifty_daily.get("moving_averages", {}).get("sma_200", 0)
+    nifty_atr_pct = nifty_daily.get("atr_percentile", 0)
+    nifty_data = await asyncio.to_thread(ta_server.get_bid_ask_targets, "^NSEI", nifty_sma_50, nifty_sma_200, nifty_atr_pct)
+    nifty_trend = nifty_data.get("quant_score", 0)
+    
+    if log_func: await log_func("[FUND] Step 5/8: Fetching Fundamentals & Event Risk...")
+    fundamentals, earnings_risk = await asyncio.to_thread(ta_server.get_fundamentals_and_events, ticker)
+    
+    if log_func: await log_func("[NEWS] Step 6/8: Fetching Stock Specific News...")
     stock_news = await asyncio.to_thread(ta_server.get_indian_stock_news, ticker, stock_name)
-    if log_func: await log_func(f"  └─ Found {len(stock_news.get('latest_news_headlines', []))} articles.")
         
-    if log_func: await log_func("[NEWS] Step 5/6: Fetching Global Macro News (ET + Google + More)...")
+    if log_func: await log_func("[NEWS] Step 7/8: Fetching Global Macro News...")
     global_news = await asyncio.to_thread(ta_server.get_global_market_news)
-    if log_func: await log_func(f"  └─ Found {len(global_news.get('global_headlines', []))} articles.")
     
-    if log_func: await log_func("[QUANT] Step 6/6: Running Quant Engine & Risk Management...")
+    if log_func: await log_func("[QUANT] Step 8/8: Running Risk Engine & Statistical Validation...")
     tech_score = short_term.get("quant_score", 0)
-    reasons = short_term.get("quant_reasons", [])
-    stock_news_list = stock_news.get('latest_news_headlines', [])
+    sma_50 = daily_sma_50
+    sma_200 = daily_sma_200
     
-    if log_func: await log_func("  ├─ Analyzing News Sentiment...")
-    news_sentiment, matched_words = analyze_news_sentiment(stock_news_list)
-    final_score = tech_score + news_sentiment
-    if log_func: await log_func(f"  │  └─ Sentiment Score: {news_sentiment} (Matched: {', '.join(matched_words) if matched_words else 'None'})")
+    if sma_50 > 0 and sma_200 > 0:
+        lt_trend = "BEARISH" if sma_50 < sma_200 else "BULLISH"
+    else:
+        lt_trend = "UNKNOWN"
     
     targets = short_term.get('actionable_targets', {})
     entry = targets.get('entry', 0)
     stop = targets.get('stop_loss', 0)
     target_price = targets.get('target', 0)
+    direction = targets.get('direction', 'LONG')
     
-    risk_per_share = entry - stop if entry and stop else 0
-    reward_per_share = target_price - entry if entry and target_price else 0
-    rr_ratio = round(reward_per_share / risk_per_share, 2) if risk_per_share > 0 else 0
+    risk_per_share = abs(entry - stop) if entry and stop else 0
+    reward_per_share = abs(target_price - entry) if entry and target_price else 0
     
-    action = determine_action(final_score, rr_ratio)
-    if log_func: await log_func(f"  ├─ Technical Score: {tech_score}")
-    if log_func: await log_func(f"  ├─ Final Signal Score: {final_score}")
-    if log_func: await log_func(f"  ├─ Risk/Reward Ratio: {rr_ratio} : 1 (Entry: ₹{entry}, Stop: ₹{stop}, Target: ₹{target_price})")
-    if log_func: await log_func(f"  └─ Final Action Determined: {action}")
+    def calc_costs(entry_p, exit_p):
+        turnover = entry_p + exit_p
+        brokerage = 0
+        stt = (entry_p * 0.001) + (exit_p * 0.001) 
+        exchange_txn = turnover * 0.0000335
+        gst = (brokerage + exchange_txn) * 0.18
+        sebi = turnover * 0.000001
+        stamp_duty = entry_p * 0.00015 
+        slippage = turnover * 0.0005 
+        return brokerage + stt + exchange_txn + gst + sebi + stamp_duty + slippage
+
+    costs = calc_costs(entry, target_price) if entry and target_price else 0
+    net_reward_per_share = reward_per_share - costs
+    net_rr_ratio = round(net_reward_per_share / risk_per_share, 2) if risk_per_share > 0 else 0
     
-    if log_func: await log_func("[SYSTEM] Generating plain-English guide & Markdown...")
-    reply = generate_markdown(ticker, profile, short_term, long_term, stock_news, global_news, final_score, action, rr_ratio)
+    volatility_state = short_term.get('background_calculations', {}).get('ATR', {}).get('interpretation', 'Low volatility')
+    adx_val = short_term.get('background_calculations', {}).get('ADX', {}).get('value', 0)
+    atr_percentile = daily_atr_percentile
+    req_rr = 2.5 if volatility_state == "High volatility" else 1.5
     
-    if log_func: await log_func("[SYSTEM] Processing complete. Dispatching UI payload...")
+    data_source = short_term.get('data_source', 'Unknown')
+    data_age = short_term.get('data_age_seconds', 999)
+    
+    oos_expectancy = long_term.get('backtest', {}).get('rolling_oos', {}).get('expectancy', None)
+    
+    action = determine_action(tech_score, net_rr_ratio, lt_trend, adx_val, volatility_state, direction, nifty_trend, atr_percentile, earnings_risk, data_age, daily_hist_days, oos_expectancy)
+    
+    backtest_data = long_term.get('backtest', {})
+    
+    reply = generate_markdown(ticker, profile, short_term, long_term, stock_news, global_news, tech_score, action, net_rr_ratio, req_rr, backtest_data, nifty_trend, fundamentals, earnings_risk, data_source, data_age, daily_hist_days)
     
     return {
         "reply": reply, 
@@ -359,10 +458,12 @@ async def process_data(ticker, stock_name, log_func=None):
 @app.post("/get_live_data")
 async def get_live_data(query: Query):
     ticker = query.user_input.strip().upper()
+
     if ticker in ["NIFTY", "NIFTY50", "NIFTY 50"]: ticker = "^NSEI"
     elif ticker in ["SENSEX", "BSE"]: ticker = "^BSESN"
     elif ticker in ["BANKNIFTY", "BANK NIFTY"]: ticker = "^NSEBANK"
     elif not (ticker.endswith(".NS") or ticker.endswith(".BO") or ticker.startswith("^")): ticker = f"{ticker}.NS"
+    
     stock_name = ticker.replace(".NS", "").replace(".BO", "").replace("^", "")
     
     if query.show_logs:
@@ -398,7 +499,7 @@ async def get_live_data(query: Query):
     
     else:
         try:
-            payload = await process_data(ticker, stock_name, log_func=None)
+            payload = await process_data(ticker, stock_name)
             return payload
         except Exception as e:
             return {"reply": f"Backend Error: {str(e)}", "short_chart_data": [], "long_chart_data": [], "targets": {}}

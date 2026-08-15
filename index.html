@@ -51,17 +51,17 @@
             <div class="title">gAIn. — bash — 80x24</div>
         </div>
         <div class="terminal-body" id="terminal-body">
-            <div>Welcome to gAIn. Terminal. Enter ticker (e.g., RELIANCE, NIFTY). Use the exact ticker, like BAJFINANCE, not BAJAJFINANCE.<br><span class="blink">_</span></div>
+            <div>Welcome to gAIn. Terminal. Enter ticker (e.g., RELIANCE). Use the exact ticker, like BAJFINANCE, not BAJAJFINANCE.<br><span class="blink">_</span></div>
         </div>
         <div class="input-line">
-            <span class="prompt">vihaan@gAIn:~$</span>
-            <input type="text" class="terminal-input" id="ticker-input" autofocus placeholder="Type ticker only (e.g., RELIANCE, NIFTY) and press ENTER.">
+            <span class="prompt">terminal@gAIn:~$</span>
+            <input type="text" class="terminal-input" id="ticker-input" autofocus placeholder="Type ticker (e.g., TCS, RELIANCE) and press ENTER.">
             <button class="freeze-btn" id="freeze-btn">Freeze</button>
         </div>
         <div class="footer-bar">
             <a href="https://github.com/aurumz-rgb" target="_blank">GitHub</a>
             <a href="documentation.html">Documentation</a>
-            <a href="https://aurumz-rgb.github.io" target="_blank">Made with 🤍 by V.S</a>
+            <a href="https://aurumz-rgb.github.io" target="_blank">Web</a>
         </div>
     </div>
 
@@ -69,7 +69,7 @@
         let pollingInterval = null;
         let isFetching = false;
         let isFrozen = false;
-        let currentTicker = "";
+        let currentInput = "";
         let terminal_text = "";
         
         const input = document.getElementById('ticker-input');
@@ -78,7 +78,6 @@
         
         const BACKEND_URL = "http://localhost:8000"; 
         //  const BACKEND_URL = "render url"; 
-        // Do this if you deply the backend to your own API backend and // the localhost:3000
 
         setInterval(() => {
             const clock = document.getElementById('live-clock');
@@ -92,10 +91,10 @@
             if (isFrozen) {
                 isFrozen = false;
                 freezeBtn.innerText = 'Freeze';
-                if (currentTicker) {
-                    fetchData(currentTicker, false);
+                if (currentInput) {
+                    fetchData(currentInput, false);
                     pollingInterval = setInterval(() => {
-                        if (!isFrozen) fetchData(currentTicker, false);
+                        if (!isFrozen) fetchData(currentInput, false);
                     }, 2000);
                 }
             } else {
@@ -105,7 +104,7 @@
             }
         });
 
-        async function fetchData(ticker, showLogs) {
+        async function fetchData(inputVal, showLogs) {
             if (isFetching) return;
             isFetching = true;
             
@@ -118,7 +117,7 @@
                 const res = await fetch(`${BACKEND_URL}/get_live_data`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ user_input: ticker, show_logs: showLogs })
+                    body: JSON.stringify({ user_input: inputVal, show_logs: showLogs })
                 });
 
                 if (showLogs) {
@@ -150,7 +149,6 @@
                         }
                     }
                 } else {
-                   
                     const data = await res.json();
                     renderData(data);
                 }
@@ -176,6 +174,7 @@
 
             const chunks = reply.split(/(\[CHART:[A-Z_]+\])/);
             
+          
             const oldScrollTop = body.scrollTop;
             const isScrolledToBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 2;
             
@@ -192,6 +191,7 @@
             
             body.innerHTML = html;
             
+
             if (isScrolledToBottom) {
                 body.scrollTop = body.scrollHeight;
             } else {
@@ -225,8 +225,9 @@
                 { x: x, y: data.map(d => d.price), mode: 'lines', line: {color: 'rgb(59, 219, 107)', width: 2}, name: 'Price' }
             ];
             const shapes = [];
-            if(targets.lowest_bid) shapes.push({type: 'line', x0: x[0], x1: x[x.length-1], y0: targets.lowest_bid, y1: targets.lowest_bid, line: {color: 'blue', dash: 'dash'}});
-            if(targets.highest_sell) shapes.push({type: 'line', x0: x[0], x1: x[x.length-1], y0: targets.highest_sell, y1: targets.highest_sell, line: {color: 'red', dash: 'dash'}});
+            if(targets.entry) shapes.push({type: 'line', x0: x[0], x1: x[x.length-1], y0: targets.entry, y1: targets.entry, line: {color: 'blue', dash: 'dash'}});
+            if(targets.stop_loss) shapes.push({type: 'line', x0: x[0], x1: x[x.length-1], y0: targets.stop_loss, y1: targets.stop_loss, line: {color: 'red', dash: 'dash'}});
+            if(targets.target) shapes.push({type: 'line', x0: x[0], x1: x[x.length-1], y0: targets.target, y1: targets.target, line: {color: 'green', dash: 'dash'}});
             Plotly.react(id, traces, {...plotDefaults(350), shapes: shapes, showlegend: false});
         }
 
@@ -277,20 +278,17 @@
 
         input.addEventListener('keypress', function (e) {
             if (e.key === 'Enter') {
-                const ticker = input.value.trim().toUpperCase();
-                if (!ticker) return;
+                const inputVal = input.value.trim();
+                if (!inputVal) return;
                 
-                currentTicker = ticker;
+                currentInput = inputVal;
                 if (pollingInterval) clearInterval(pollingInterval);
                 
-         
-                fetchData(ticker, true);
+                fetchData(inputVal, true);
                 
-
-              
                 pollingInterval = setInterval(() => {
                     if (!isFrozen) {
-                        fetchData(ticker, false); 
+                        fetchData(inputVal, false); 
                     }
                 }, 2000); 
             }

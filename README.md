@@ -1,5 +1,7 @@
 # gAIn. Stock Market Terminal
 
+![gAIn](images/screenshot2.png)
+
 A mathematically driven stock-market analysis terminal for the Indian Stock Market (NSE/BSE). gAIn. generates deterministic technical-analysis signals, trade levels, volatility projections, risk/reward calculations, market filters, backtesting metrics, and relevant financial news.
 
 > **Important:** gAIn. currently uses **no AI/LLM to generate trading signals or price targets**. All trading calculations are deterministic mathematical calculations implemented in Python and Pandas.
@@ -146,6 +148,10 @@ The following screenshots show the gAIn. terminal interface and its analysis out
 ### Screenshot 2
 
 ![gAIn. Screenshot 2](images/screenshot2.png)
+
+### Screenshot 3
+
+![gAIn. Screenshot 3](images/screenshot3.png)
 
 ---
 

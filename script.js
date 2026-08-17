@@ -85,9 +85,23 @@ async function fetchData(inputVal, showLogs) {
             renderData(data);
         }
     } catch (e) {
-        if (!pollingInterval) {
-            body.innerHTML = `<div style="color: red;">Connection Error: ${e}<br>Make sure backend is running.</div>`;
+        if (pollingInterval) {
+            clearInterval(pollingInterval);
+            pollingInterval = null;
         }
+        body.innerHTML = `
+            <div style="color: #ff5f56; font-size: 18px; line-height: 1.7;">
+                <strong>⚠️  BACKEND IS NOT RUNNING...</strong><br><br>
+                The frontend cannot reach the backend server.<br>
+                Please run it on <strong>port 8000</strong>.<br><br>
+                <span style="color: #aaa;">Start the backend from the project folder using:</span><br>
+                <code style="color: rgb(59, 219, 107); background:#1a1a1a; padding:6px 10px; border-radius:4px; display:inline-block; margin-top:6px;">
+                    python3 -m uvicorn main:app --reload --port 8000
+                </code><br><br>
+                <span style="color: #aaa;">Once the backend is running, type your ticker again and press ENTER.</span><br>
+                <span style="color: #b49e57;">For more detailed information, please view the README.md file: <a href="https://github.com/aurumz-rgb/gAIn" target="_blank" style="color: #b49e57; text-decoration: underline;">https://github.com/aurumz-rgb/gAIn</a>.</span>
+            </div>
+        `;
     } finally {
         isFetching = false;
     }

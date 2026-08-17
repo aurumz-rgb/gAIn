@@ -8,7 +8,7 @@ A mathematically driven stock-market analysis terminal for the Indian Stock Mark
 
 ---
 
-## 1. How to Use
+## 1. 🛠️ How to Use
 
 ### 1.1 Launch the Frontend
 
@@ -137,7 +137,7 @@ If the application does not return results:
 
 ---
 
-# 2. Screenshots
+# 2. 📸 Screenshots
 
 The following screenshots show the gAIn. terminal interface and its analysis output.
 
@@ -155,7 +155,7 @@ The following screenshots show the gAIn. terminal interface and its analysis out
 
 ---
 
-# 3. Documentation — Brief Overview
+# 3. 🗂️ Documentation — Brief Overview
 
 gAIn. is designed around a simple principle:
 
@@ -636,7 +636,7 @@ For the complete technical documentation, formulas, architecture details, calcul
 
 ---
 
-# Repository Note
+# ✎ᝰ. Repository Note
 
 This repository originally hosted **ReviewAid**.
 

@@ -424,11 +424,8 @@ The system applies several levels of protection.
 Net R:R <= 0
 → NO TRADE (Negative Net Reward)
 
-Positive R:R but below required threshold
-→ AVOID / NO TRADE
-
-ADX < 25
-→ WAIT
+Positive R:R but below required threshold OR ADX < 25
+→ AVOID / NO TRADE (e.g., "Failed: R:R < 1.5, ADX < 25")
 ```
 
 This prevents the system from treating every technically valid setup as an actionable trade.
@@ -613,11 +610,11 @@ Calculate costs and Net R:R
         ↓
 Apply ADX / volatility / Nifty filters
         ↓
-Generate ATR projections
-        ↓
-Run validation/backtesting where applicable
+Generate ATR projections & Recent Trading Hours Performance
         ↓
 Fetch relevant news
+        ↓
+Run Live Market Scan (Gainers/Losers/High Activity)
         ↓
 Format response as Markdown + chart data
         ↓

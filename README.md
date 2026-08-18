@@ -14,7 +14,7 @@ A mathematically driven stock-market analysis terminal for the Indian Stock Mark
 
 Open the project folder and simply **double-click `index.html`**.
 
-The gAIn. terminal interface will open in your web browser.
+The terminal interface will open in your web browser.
 
 
 ### 1.2 Start the Backend

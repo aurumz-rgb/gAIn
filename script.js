@@ -9,7 +9,7 @@ const body = document.getElementById('terminal-body');
 const freezeBtn = document.getElementById('freeze-btn');
 
 const BACKEND_URL = "http://localhost:8000"; 
-//  const BACKEND_URL = "render url"; 
+
 
 setInterval(() => {
     const clock = document.getElementById('live-clock');

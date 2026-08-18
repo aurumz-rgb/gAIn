@@ -444,19 +444,33 @@ def get_bid_ask_targets(ticker: str, daily_sma_50: float = 0, daily_sma_200: flo
         if now_ist < close_time:
             total_trading_hours = 6.25 # 9:15 AM to 3:30 PM
             hours_to_close = (close_time - now_ist).total_seconds() / 3600.0
+            bias = (quant_score / 8.0)
             
-            if hours_to_close > 1.0:
-                t1 = now_ist + timedelta(hours=1)
-                vol_factor_1h = (1.0 / total_trading_hours) 
-                bias = (quant_score / 8.0) 
-                p_max_1h = current_price + (daily_atr * vol_factor_1h * max(0.5, 1 + bias))
-                p_min_1h = current_price - (daily_atr * vol_factor_1h * max(0.5, 1 - bias))
-                projections.append({"time": t1.strftime("%I:%M %p"), "max": round(p_max_1h, 2), "min": round(p_min_1h, 2)})
+            current_iter_time = now_ist
+            while current_iter_time < close_time:
+                current_iter_time += timedelta(hours=1)
                 
-            vol_factor_close = hours_to_close / total_trading_hours
-            p_max_close = current_price + (daily_atr * vol_factor_close * max(0.5, 1 + bias))
-            p_min_close = current_price - (daily_atr * vol_factor_close * max(0.5, 1 - bias))
-            projections.append({"time": "MARKET CLOSE", "max": round(p_max_close, 2), "min": round(p_min_close, 2)})
+                if current_iter_time >= close_time:
+                    vol_factor = hours_to_close / total_trading_hours
+                    time_label = "MARKET CLOSE"
+                    current_iter_time = close_time 
+                else:
+                    hours_passed = (current_iter_time - now_ist).total_seconds() / 3600.0
+                    vol_factor = hours_passed / total_trading_hours
+                    time_label = current_iter_time.strftime("%I:%M %p")
+                
+                up_move = daily_atr * vol_factor * max(0.5, 1 + bias)
+                down_move = daily_atr * vol_factor * max(0.5, 1 - bias)
+                p_max = current_price + up_move
+                p_min = current_price - down_move
+                
+                projections.append({
+                    "time": time_label, 
+                    "max": round(p_max, 2), 
+                    "min": round(p_min, 2),
+                    "upper_move": round(up_move, 2),
+                    "lower_move": round(down_move, 2)
+                })
             
         unique_projections = []
         seen_times = set()
@@ -858,6 +872,63 @@ def get_indian_stock_news(ticker: str, stock_name: str) -> dict:
     headlines = [{"text": f"[{item['date']}] {item['title']}", "url": item['link']} for item in news_items[:25]]
     result = {"latest_news_headlines": headlines} if headlines else {"news": "No recent news found."}
     return result
+
+def get_live_recommendations() -> dict:
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Referer': 'https://www.nseindia.com/market-data/most-active-securities'
+    }
+    recs = {"short_term": [], "long_term": []}
+    session = requests.Session()
+    
+    try:
+   
+        session.get("https://www.nseindia.com", headers=headers, timeout=10)
+        
+        
+        try:
+            gainers_res = session.get("https://www.nseindia.com/api/live-analysis-variations?index=gainers", headers=headers, timeout=10).json()
+            for item in gainers_res.get('NIFTY', {}).get('data', []):
+                recs['short_term'].append({"ticker": item.get('symbol'), "reason": f"Top NIFTY Gainer (+{item.get('perChange', 0)}%)", "ltp": item.get('ltp', 0)})
+        except: pass
+            
+
+        try:
+            losers_res = session.get("https://www.nseindia.com/api/live-analysis-variations?index=loosers", headers=headers, timeout=10).json()
+            for item in losers_res.get('NIFTY', {}).get('data', []):
+                recs['short_term'].append({"ticker": item.get('symbol'), "reason": f"Top NIFTY Loser ({item.get('perChange', 0)}%)", "ltp": item.get('ltp', 0)})
+        except: pass
+            
+        
+        try:
+          
+            time.sleep(2) 
+            
+           
+            active_res = session.get("https://www.nseindia.com/api/live-analysis-most-active-securities?index=value", headers=headers, timeout=10).json()
+            
+          
+            active_data = active_res.get('data', [])
+                
+            for item in active_data:
+   
+                val_raw = item.get('totalTradedValue', 0)
+                val_cr = val_raw / 10000000.0
+                ltp = item.get('lastPrice', item.get('ltp', 0))
+                
+                recs['long_term'].append({
+                    "ticker": item.get('symbol'), 
+                    "reason": f"High Traded Value (₹{val_cr:.2f} Cr)", 
+                    "ltp": ltp
+                })
+        except: pass
+            
+    except:
+        pass
+        
+    return recs
 
 def get_global_market_news() -> dict:
     headers = {

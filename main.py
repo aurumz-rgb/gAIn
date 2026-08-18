@@ -142,7 +142,7 @@ def generate_beginner_guide(name, action, cp, entry, stop, target_price, lt_tren
 {lt_advice}
 """
 
-def generate_markdown(ticker, profile, short_term, long_term, stock_news, global_news, tech_score, action, net_rr_ratio, req_rr, backtest_data, nifty_trend, fundamentals, earnings_risk, data_source, data_age, daily_hist_days):
+def generate_markdown(ticker, profile, short_term, long_term, stock_news, global_news, tech_score, action, net_rr_ratio, req_rr, backtest_data, nifty_trend, fundamentals, earnings_risk, data_source, data_age, daily_hist_days, recommendations):
     name = profile.get("name", ticker)
     company_desc = profile.get("description", "N/A")
     cp = short_term.get("current_price", "N/A")
@@ -200,7 +200,9 @@ def generate_markdown(ticker, profile, short_term, long_term, stock_news, global
         seen_times.add(t)
         p_min = p.get('min', 0)
         p_max = p.get('max', 0)
-        proj_str += f"* **{y(t)}**: Expected volatility range (ATR-based) is **{y(f'₹{fmt_in(p_min)} - ₹{fmt_in(p_max)}')}**.\n"
+        up_move = p.get('upper_move', 0)
+        down_move = p.get('lower_move', 0)
+        proj_str += f"* **{y(t)}**: Expected volatility range is **{y(f'₹{fmt_in(p_min)} - ₹{fmt_in(p_max)}')}** *(Math: -₹{fmt_in(down_move)} / +₹{fmt_in(up_move)} from CMP)*.\n"
         
     
     if not proj_str:
@@ -274,6 +276,19 @@ def generate_markdown(ticker, profile, short_term, long_term, stock_news, global
 * **Short Stats:** {wf_bt.get('short_trades', 0)} trades, {wf_bt.get('short_win_rate', 0)}% Win
 """
 
+    recs = recommendations or {}
+    recs_short_list = recs.get("short_term", [])
+    if recs_short_list:
+        recs_short_str = "\n".join([f"* {y(r.get('ticker', 'N/A'))} (LTP: ₹{fmt_in(r.get('ltp', 0))}) - {r.get('reason', 'N/A')}" for r in recs_short_list])
+    else:
+        recs_short_str = "* No live momentum signals available right now."
+
+    recs_long_list = recs.get("long_term", [])
+    if recs_long_list:
+        recs_long_str = "\n".join([f"* {y(r.get('ticker', 'N/A'))} (LTP: ₹{fmt_in(r.get('ltp', 0))}) - {r.get('reason', 'N/A')}" for r in recs_long_list])
+    else:
+        recs_long_str = "* No long-term volume signals available right now."
+
     return f"""**⏱️ Current Date & Time:** <span id="live-clock">Loading...</span>
 
 **{y(ticker)}** | {company_desc}
@@ -299,7 +314,7 @@ def generate_markdown(ticker, profile, short_term, long_term, stock_news, global
 * **Stop Loss:** {y(f'₹{fmt_in(stop)}')} (Risk: {y(f'₹{fmt_in(risk_per_share)}/share')})
 * **Target:** {y(f'₹{fmt_in(target_price)}')} (Gross Reward: {y(f'₹{fmt_in(reward_per_share)}/share')})
 * **Net Reward (after estimated trading costs/slippage):** {y(f'₹{fmt_in(net_reward_per_share)}/share')}
-* **Net Risk/Reward Ratio:** {y(f'{net_rr_ratio} : 1')} (Required: {req_rr})
+* **Net Reward/Risk Ratio:** {y(f'{net_rr_ratio} : 1')} (Required: {req_rr})
 * *Note: Do not trade if R:R is below required threshold or ADX < 25.*
 
 =================================================
@@ -363,6 +378,20 @@ def generate_markdown(ticker, profile, short_term, long_term, stock_news, global
 {global_news_str}
 
 *⚠️ Disclaimer: Based on textbook technical math analysis, which historically wins only about 50-55% of the time.*
+
+---
+---
+
+###  {g('Live Market Scan (Tickers to Watch)')}
+*Automated scan based on current price momentum and market trading activity.*
+
+**Short-Term Momentum Plays (Swing / Intraday):**
+{recs_short_str}
+
+**High-Activity Stocks (High Traded Value):**
+{recs_long_str}
+
+*⚠️ Note: These are automated live scans of market activity, not direct buy signals.*
 """
 
 async def process_data(ticker, stock_name, log_func=None):
@@ -398,7 +427,10 @@ async def process_data(ticker, stock_name, log_func=None):
     if log_func: await log_func("[NEWS] Step 7/8: Fetching Global Macro News...")
     global_news = await asyncio.to_thread(ta_server.get_global_market_news)
     
-    if log_func: await log_func("[QUANT] Step 8/8: Running Risk Engine & Statistical Validation...")
+    if log_func: await log_func("[REC] Step 8/8: Fetching Live Market Recommendations...")
+    recommendations = await asyncio.to_thread(ta_server.get_live_recommendations)
+    
+    if log_func: await log_func("[QUANT] Step 9/9: Running Risk Engine & Statistical Validation...")
     tech_score = short_term.get("quant_score", 0)
     sma_50 = daily_sma_50
     sma_200 = daily_sma_200
@@ -446,7 +478,7 @@ async def process_data(ticker, stock_name, log_func=None):
     
     backtest_data = long_term.get('backtest', {})
     
-    reply = generate_markdown(ticker, profile, short_term, long_term, stock_news, global_news, tech_score, action, net_rr_ratio, req_rr, backtest_data, nifty_trend, fundamentals, earnings_risk, data_source, data_age, daily_hist_days)
+    reply = generate_markdown(ticker, profile, short_term, long_term, stock_news, global_news, tech_score, action, net_rr_ratio, req_rr, backtest_data, nifty_trend, fundamentals, earnings_risk, data_source, data_age, daily_hist_days, recommendations)
     
     return {
         "reply": reply, 

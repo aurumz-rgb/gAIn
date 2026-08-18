@@ -1,6 +1,7 @@
-# gAIn. Stock Market Terminal
 
 ![gAIn](images/screenshot2.png)
+
+# gAIn. Stock Market Terminal
 
 A mathematically driven stock-market analysis terminal for the Indian Stock Market (NSE/BSE). gAIn. generates deterministic technical-analysis signals, trade levels, volatility projections, risk/reward calculations, market filters, backtesting metrics, and relevant financial news.
 

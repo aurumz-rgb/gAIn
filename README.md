@@ -139,19 +139,18 @@ If the application does not return results:
 
 # 2. 📸 Screenshots
 
-The following screenshots show the gAIn. terminal interface and its analysis output.
+The following screenshots show the terminal interface and its analysis output.
 
-### Screenshot 1
 
 ![gAIn. Screenshot 1](images/screenshot1.png)
 
-### Screenshot 2
-
 ![gAIn. Screenshot 2](images/screenshot2.png)
 
-### Screenshot 3
-
 ![gAIn. Screenshot 3](images/screenshot3.png)
+
+![gAIn. Screenshot 4](images/screenshot4.png)
+
+![gAIn. Screenshot 5](images/screenshot5.png)
 
 ---
 

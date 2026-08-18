@@ -376,8 +376,8 @@ def get_bid_ask_targets(ticker: str, daily_sma_50: float = 0, daily_sma_200: flo
         di_sum = (hist_5m['+DI'] + hist_5m['-DI']).replace(0, np.nan)
         hist_5m['DX'] = 100 * abs(hist_5m['+DI'] - hist_5m['-DI']) / di_sum
         hist_5m['ADX'] = hist_5m['DX'].ewm(alpha=1/14, adjust=False).mean()
-        hist_5m['ADX'].replace([np.inf, -np.inf], 0, inplace=True)
-        hist_5m['ADX'].fillna(0, inplace=True)
+        hist_5m['ADX'] = hist_5m['ADX'].replace([np.inf, -np.inf], 0)
+        hist_5m['ADX'] = hist_5m['ADX'].fillna(0)
         
         hist_5m['Typical_Price'] = (hist_5m['High'] + hist_5m['Low'] + hist_5m['Close']) / 3
         hist_5m['TP_Vol'] = hist_5m['Typical_Price'] * hist_5m['Volume']

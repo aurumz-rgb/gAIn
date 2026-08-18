@@ -57,39 +57,3 @@ li { margin-bottom: 10px; }
     border-color: rgb(59, 219, 107);
 }
 
-
-/* RESPONSIVENESS*/
-
-@media (max-width: 768px) {
-    body {
-        line-height: 1.5;
-    }
-
-    .container {
-        margin: 0;
-        padding: 20px 15px;
-        border-radius: 0;
-        border: none;
-        max-width: 100%;
-    }
-
-    h1 {
-        font-size: 24px;
-    }
-
-    h2, h3, h4 {
-        font-size: 18px;
-    }
-
-    p, li {
-        font-size: 14px;
-    }
-
-    pre {
-        padding: 10px;
-    }
-
-    pre code {
-        font-size: 12px;
-    }
-}
